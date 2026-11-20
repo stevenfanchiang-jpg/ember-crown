@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Ember Crown">
 <meta name="theme-color" content="#0e1512">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="d8711d251c";window.EC_BUILT="Nov 20, 2:05 pm";
+window.EC_VERSION="05dff24acb";window.EC_BUILT="Nov 20, 2:33 pm";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -289,6 +289,7 @@ html.rot #setp .drawer{padding-right:max(14px,env(safe-area-inset-bottom,0px))}
 #ttip.unit{padding:5px 8px;min-width:132px;max-width:170px}
 #ttip.unit .tn{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #ttip .hpb{position:relative;height:9px;border-radius:5px;background:#2a2522;margin:4px 0 4px;overflow:hidden}#ttip .hpb i{position:absolute;left:0;top:0;bottom:0;border-radius:5px}#ttip .hpb b{position:absolute;right:3px;top:-2px;font-size:9.5px;line-height:13px;color:#fff;text-shadow:0 1px 2px #000}
+#ttip.unit .tc.ter{gap:3px;margin:4px 0 0}#ttip.unit .tc.ter span{font-size:10px;padding:0 5px}
 #ttip .ks{display:grid;grid-template-columns:1fr 1fr;gap:1px 8px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}#ttip .ks b{color:#f3ead8}
 html.rot #ttip,#ttip.sm{max-width:min(300px,50%);font-size:12px;padding:6px 9px}html.rot #ttip .tn{font-size:13px}html.rot #ttip .tc span{font-size:10.5px;padding:1px 6px}
 @media (max-height:560px){#ttip{max-width:min(300px,50%);font-size:12px;padding:6px 9px}#ttip .tc span{font-size:10.5px;padding:1px 6px}}
@@ -386,9 +387,10 @@ html.rot #skbox,#skbox.sm{font-size:12px;padding:6px 10px}
  const swap=t=>t.replace(/width/g,'\u0001').replace(/height/g,'width').replace(/\u0001/g,'height')
   .replace(/portrait/g,'\u0002').replace(/landscape/g,'portrait').replace(/\u0002/g,'landscape');
  // 2026-11-20: the iPhone home-screen app can report innerHeight a status bar short at launch, which left an
- // empty band at the bottom; measure the real fixed-position box too and use the larger.
+ // empty band at the bottom. 2026-11-20 later: that band is outside the web view (iOS shifts the app up a status
+ // bar in 'black' mode), and sizing to the larger 100vh box pushed the right edge off screen, so use innerHeight again.
  let probe=null;function real(){if(!document.body)return [innerWidth,innerHeight];if(!probe){probe=document.createElement('div');probe.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;visibility:hidden;pointer-events:none;z-index:-1';document.documentElement.appendChild(probe);}
-  return [Math.max(innerWidth,probe.offsetWidth),Math.max(innerHeight,probe.offsetHeight)];}
+  return [innerWidth,innerHeight];}
  function upd(){const [w,h]=real(),r=h>w&&w<=820&&(!mq||mq.matches||'ontouchstart' in window);
   if(r){H.style.setProperty('--rw',h+'px');H.style.setProperty('--rh',w+'px');H.style.setProperty('--vh',w+'px');}
   else H.style.removeProperty('--vh');
@@ -2104,6 +2106,7 @@ function mkUnit(o){
   if(o.hero&&HERO[o.hero]){const h=HERO[o.hero];u.look=Object.assign({},h.look,o.look||{});u.name=h.n;(h.sk||[]).forEach(k=>u.sk.includes(k)||u.sk.push(k));}
   for(const k of o.sk||[])if(!u.sk.includes(k))u.sk.push(k);   // extra skills from mission data (stand-ins carry their planned class's skill)
   if(o.leave!=null){u.leave=o.leave;u.leaveMsg=o.leaveMsg||null;}}   // R-076
+ if(o.still!=null)u.still=o.still;   // R-079 can't move or act until turn `still` (true: never)
  u.hp=u.s.hp;
  for(const k of u.sk){const d=SK[k];if(d&&d.kind==='active')u.uses[k]=d.uses;}
  if(has(u,'vanish'))u.hidden=true;
@@ -2116,7 +2119,9 @@ function stat(u,k){
  if(k==='spd'&&a&&a.spd)v+=0;
  return v;
 }
-function movOf(u){if(u.frozen)return 0;let m=CLS[u.cls].mv;const x=u.eq.x?IT[u.eq.x]:null;if(x&&x.mov)m+=x.mov;if(u.buffs.mov)m+=u.buffs.mov;return m;}
+// R-079: a still unit (a nest, Oakheart asleep) can't move, act, counter or hold a zone until G.turn reaches u.still
+function isStill(u){return !!u.still&&(u.still===true||!G||G.turn<u.still);}
+function movOf(u){if(u.frozen||isStill(u))return 0;let m=CLS[u.cls].mv;const x=u.eq.x?IT[u.eq.x]:null;if(x&&x.mov)m+=x.mov;if(u.buffs.mov)m+=u.buffs.mov;return m;}
 function mtOf(u){return CLS[u.cls].mt;}
 function canFight(u){const w=W(u);return !!w&&w.wt!=='staff'&&famOf(u)!=='civ';}
 function rangeOf(u,r,c,moved){
@@ -2149,7 +2154,7 @@ const seenByPlayer=u=>visibleTo(u,'B');
 // R-015 zone of control (owner 2026-11-18): the four tiles touching a unit that can hold ground.
 // A hostile unit that steps into one must stop there for this move; it may still attack.
 function ignoresZoc(u){return isFlyer(u)||famOf(u)==='stealth'||!!u.hidden;}
-function hasZoc(o){return !o.dead&&!o.gone&&!o.escaped&&!o.carried&&!o.frozen&&famOf(o)!=='civ';}
+function hasZoc(o){return !o.dead&&!o.gone&&!o.escaped&&!o.carried&&!o.frozen&&!isStill(o)&&famOf(o)!=='civ';}
 function zocSet(u){const z=new Set();if(!RULES.zoc||ignoresZoc(u))return z;
  for(const o of G.units){if(friendly(o.side,u.side)||!hasZoc(o)||!visibleTo(o,u.side))continue;
   for(const [dr,dc] of [[1,0],[-1,0],[0,1],[0,-1]])z.add((o.r+dr)+','+(o.c+dc));}return z;}
@@ -2249,10 +2254,10 @@ function hitsOf(a,d,o){
  return {n:stat(a,'spd')>=stat(d,'spd')+RULES.doubleSpd?2:1,f:1};
 }
 function knockInfo(a,d,ar,ac){if(!has(a,'knockback'))return null;const dr=Math.sign(d.r-ar),dc=Math.sign(d.c-ac);const nr=d.r+dr,nc=d.c+dc;
- const blocked=!inMap(nr,nc)||tcost(mtOf(d),tile(nr,nc))>=99||!!unitAt(nr,nc);return {nr,nc,blocked};}
+ const blocked=isStill(d)||!inMap(nr,nc)||tcost(mtOf(d),tile(nr,nc))>=99||!!unitAt(nr,nc);return {nr,nc,blocked};}
 function canCounter(a,d,ar,ac,o){
  if(o.sk==='oath'||o.sk==='pilfer')return false;
- if(!canFight(d)||d.frozen)return false;
+ if(!canFight(d)||d.frozen||isStill(d))return false;
  if(d.countered&&!d.defend&&!has(d,'riposte'))return false;
  const rg=rangeOf(d,d.r,d.c,true);if(!rg)return false;let [lo,hi]=rg;if(has(d,'riposte'))hi=Math.max(hi,2);
  const dd=dist(ar,ac,d.r,d.c);return dd>=lo&&dd<=hi;
@@ -2539,6 +2544,8 @@ function checkEnd(){
  if(rowan&&rowan.dead)return endBattle(false,'Rowan has fallen.');
  if(m.lose&&m.lose.protect)for(const tg of m.lose.protect){const u=G.units.find(x=>(x.tag===tg||x.hero===tg)&&x.side!=='R');if(u&&u.dead)return endBattle(false,`${u.name} was lost.`);}
  if(m.lose&&m.lose.burn&&(G.burnt||0)>=m.lose.burn)return endBattle(false,'Too much of the forest has burned.');   // R-078
+ if(m.lose&&m.lose.lost){const L=m.lose.lost,n=G.units.filter(u=>u.tag===L.tag&&u.side!=='R'&&u.dead).length;if(n>=L.n)return endBattle(false,L.msg||`Too many were lost (${n}).`);}   // R-080
+ if(m.lose&&m.lose.tile){const [tr,tc]=m.lose.tile;if(G.units.some(u=>u.side==='R'&&!u.dead&&!u.gone&&u.r===tr&&u.c===tc))return endBattle(false,m.lose.msg||'An enemy has seized the throne.');}   // R-081
  if(w.type==='escape'&&w.who==='civ'){const civs=G.units.filter(u=>u.tag==='civ');const dead=civs.filter(u=>u.dead).length,esc=civs.filter(u=>u.escaped).length;if(civs.length-dead<w.need)return endBattle(false,'Too many villagers were lost.');if(esc>=w.need&&civs.every(u=>u.dead||u.escaped))return endBattle(true,'The villagers are safe.');if(esc>=w.need&&!civs.some(u=>!u.dead&&!u.escaped))return endBattle(true,'The villagers are safe.');}
  if((w.type==='escape'||w.type==='reach')&&w.who==='rowan'&&rowan&&rowan.escaped)return endBattle(true,w.type==='reach'?'Rowan reached the goal.':'Rowan escaped.');
  if(w.type==='catch'){const t=G.units.find(u=>u.tag===w.tag);if(t&&t.dead)return endBattle(true,`${t.name} is caught.`);if(t&&t.gone)return endBattle(false,`${t.name} got away.`);}
@@ -2582,6 +2589,7 @@ async function startSide(side){
  const mine=live().filter(u=>side==='B'?u.side==='B':u.side===side);
  for(const u of mine){u.done=false;u.moved=false;u.movedTiles=0;u.defend=false;u.ambushed=0;
   if(u.frozen){u.frozen--;if(u.frozen<0)u.frozen=0;}
+  if(isStill(u))u.done=true;else if(u.still&&u.still===G.turn&&!u.woke){u.woke=1;ftext(u.x,u.y-62,'Awake!','#c9f5b0',true);ring(u.x,u.y,'#c9f5b0');logm(`${u.name} wakes and can act.`,'B');}   // R-079
   if(u.revealed){u.revealed=0;if(has(u,'vanish'))u.hidden=true;}
   const T=TER[tile(u.r,u.c)];if(T.heal&&u.hp<u.s.hp){const a=Math.min(T.heal,u.s.hp-u.hp);u.hp+=a;ftext(u.x,u.y-48,'+'+a,'#c9f5b0');}
   if(has(u,'regen')&&!u.burned&&u.hp<u.s.hp){const a=Math.min(5,u.s.hp-u.hp);u.hp+=a;ftext(u.x,u.y-48,'+'+a,'#c9f5b0');}
@@ -2614,6 +2622,7 @@ function walkDist(u,foes){const H=G.rows,W=G.cols,D=new Float32Array(H*W).fill(1
    if(D[nk]<=d||tcost(mt,tile(nr,nc))>=99)continue;D[nk]=d;q.push(nk);}}
  return (r,c)=>D[r*W+c]<1e8?D[r*W+c]:99;}
 function plan(u){
+ if(isStill(u))return null;   // R-079
  const R=reachOf(u),foes=foesOf(u).filter(e=>visibleTo(e,u.side)),allies=alliesOf(u);
  const frag=['archer','mage','healer'].includes(famOf(u));const rmax=(rangeOf(u,u.r,u.c,false)||[1,1])[1];
  const awake=u.ai!=='guard'||foes.some(e=>dist(e.r,e.c,u.r,u.c)<=5)||u.woke;if(u.ai==='guard'&&awake)u.woke=1;
@@ -2653,7 +2662,7 @@ async function aiSide(side){
  const mine=live().filter(u=>u.side===side).sort((a,b)=>order.indexOf(famOf(a))-order.indexOf(famOf(b)));
  for(const u of mine){
   if(G.over)return;if(u.dead||u.gone)continue;
-  if(u.frozen){u.done=true;continue;}
+  if(u.frozen||isStill(u)){u.done=true;continue;}
   const p=plan(u);if(!p){u.done=true;continue;}
   const acts=p.target||p.heal||p.r!==u.r||p.c!==u.c;
   const vis=seenByPlayer(u);
@@ -2981,7 +2990,7 @@ function unitCard(u){
  const sk=u.sk.filter(k=>SK[k]).map(k=>`<span class="tag ${SK[k].kind==='active'?'sk':''}" title="${esc(SK[k].d)}">${esc(SK[k].n)}${SK[k].kind==='active'&&SK[k].uses<99?' '+(u.uses[k]||0):''}</span>`).join('');
  return `<div class="uc"><canvas class="por" width="128" height="128" data-u="${u.id}"></canvas><div class="ucm">
   <div class="un">${esc(u.name)}<span class="lv">Lv ${u.lv}</span></div>
-  <div class="us">${esc(cl.n)}${u.boss?' · Leader':''} · ${esc(TER[ch].n)}${td?` (${td>0?'+':''}${td} def)`:''}${u.defend?' · Defending':''}${u.hidden?' · Hidden':''}${u.done&&!u.dead?' · done':''}</div>
+  <div class="us">${esc(cl.n)}${u.boss?' · Leader':''} · ${esc(TER[ch].n)}${td?` (${td>0?'+':''}${td} def)`:''}${u.defend?' · Defending':''}${u.hidden?' · Hidden':''}${isStill(u)?(u.still===true?' · Can’t move or act':` · Asleep: wakes on turn ${u.still}`):u.done&&!u.dead?' · done':''}</div>
   <div class="hpl"><div class="bar"><i class="${hpCls(f)}" style="width:${f*100}%"></i></div><span>${Math.max(0,u.hp)} / ${u.s.hp}</span></div>
   ${rec?`<div class="hpl"><div class="bar xp"><i style="width:${rec.xp}%"></i></div><span>XP ${rec.xp}</span></div>`:''}</div></div>
   <dl class="st">${['atk','def','mag','res','spd'].map(k=>`<div><dt>${STATN[k]}</dt><dd>${stat(u,k)+(k==='def'&&u.defend?3:0)}</dd></div>`).join('')}<div><dt>MOV</dt><dd>${movOf(u)}</dd></div></dl>
@@ -4937,7 +4946,7 @@ MISSIONS.push({
 MISSIONS.push({
  id:'m13',num:'13',name:"The Rotting Grove",act:2,style:'plains',
  brief:"In the heart of the Silverwood the oldest wardwood is waking. The rot is coming for him from every side. Hold the clearing until he stands.",
- obj:"Survive 10 turns. Oakheart must survive.",
+ obj:"Survive 10 turns. Oakheart must survive; he sleeps until turn 6.",
  map:[
   'DDDDDDDDDD..DDDDDDDDDD',
   'DDDDFFFFFF..FFFFFFDDDD',
@@ -4956,7 +4965,7 @@ MISSIONS.push({
  deploy:[[5,9],[5,12],[7,9],[7,12],[6,9],[6,13],[5,11],[7,11]],
  forced:["rowan"],
  guests:[
-  {cls:'hauler',lv:11,name:'Oakheart',r:6,c:11,side:'G',tag:'oakheart'}
+  {cls:'hauler',lv:11,name:'Oakheart',r:6,c:11,side:'G',tag:'oakheart',still:6}
  ],
  enemies:[
   ['skeleton',8,0,10,{pal:'hollow',ai:'aggr'}],
@@ -5415,7 +5424,7 @@ MISSIONS.push({
 MISSIONS.push({
  id:'m18',num:'18',name:"Skyreach Eyries",act:2,style:'plains',
  brief:"Skyreach's gryphon eyries hang above the clouds. Wyvern riders are diving on the nests.",
- obj:"Survive 8 turns. Seren must survive.",
+ obj:"Survive 8 turns. Seren must survive. Losing 2 of the 3 nests loses the battle.",
  map:[
   'VVVVVVVVVVVVVVVVVVVVVV',
   'VV...HVVVVVVVVVV.H..VV',
@@ -5434,9 +5443,9 @@ MISSIONS.push({
  deploy:[[5,10],[5,11],[6,9],[6,10],[6,11],[6,12],[7,10],[7,11]],
  forced:["rowan"],
  guests:[
-  {cls:'civ',lv:1,name:'Gryphon Nest',r:2,c:3,side:'B',tag:'nest'},
-  {cls:'civ',lv:1,name:'Gryphon Nest',r:3,c:19,side:'B',tag:'nest'},
-  {cls:'civ',lv:1,name:'Gryphon Nest',r:9,c:3,side:'B',tag:'nest'},
+  {cls:'civ',lv:1,name:'Gryphon Nest',r:2,c:3,side:'B',tag:'nest',still:true},
+  {cls:'civ',lv:1,name:'Gryphon Nest',r:3,c:19,side:'B',tag:'nest',still:true},
+  {cls:'civ',lv:1,name:'Gryphon Nest',r:9,c:3,side:'B',tag:'nest',still:true},
   {cls:'gryphonrider',lv:12,name:'Seren',r:5,c:13,side:'G',tag:'seren'}
  ],
  enemies:[
@@ -5454,7 +5463,7 @@ MISSIONS.push({
   {r:10,c:19,kind:'hidden',loot:{item:'steellance'}}
  ],
  win:{type:'survive',turns:8},
- lose:{protect:['seren']},
+ lose:{protect:['seren'],lost:{tag:'nest',n:2,msg:'Two gryphon nests were destroyed.'}},
  events:[
   {when:{start:1},scene:[
    {w:'seren',x:'Wyverns cross the sky like it’s nothing. You can’t. Use the bridges, and keep your spears up.'},
@@ -5588,7 +5597,7 @@ MISSIONS.push({
 MISSIONS.push({
  id:'m20',num:'20',name:"The Ashen Table",act:2,style:'plains',
  brief:"Cinderhold, an old border fort full of refugees. General Morrow has brought the Regent's army to its gate.",
- obj:"Hold the fort for 10 turns. Rowan must live.",
+ obj:"Hold the fort for 10 turns. Rowan must live, and no enemy may stand on the throne.",
  map:[
   'MMMMMMMMMMMMMM########',
   'MMMMMHH.......#RRRRRR#',
@@ -5633,6 +5642,7 @@ MISSIONS.push({
   {r:3,c:6,kind:'wood',loot:{gold:300}}
  ],
  win:{type:'survive',turns:10},
+ lose:{tile:[2,17],msg:'The enemy has taken the throne.'},
  events:[
   {when:{start:1},scene:[
    {w:'morrow',x:'Lord Regent Voss offers mercy. Hand over the impostor and the sword, and the rest of you may go home.'},
@@ -6202,7 +6212,8 @@ function tileCard(){const tt=$('#ttip');if(!tt)return;const live=G&&G.started&&!
   const pw=stat(u,mk)+(w&&w.wt!=='staff'?(w.mt||0):0);
   h=`<div class="tn"><span style="color:${sideC}">●</span> ${esc(u.name)} <small>Lv ${u.lv||''}</small>${u.defend?' <small class="gu">DEF+3</small>':''}</div>
    <div class="hpb"><i style="width:${(fr*100).toFixed(0)}%;background:${fr>.6?'#6fd06a':fr>.3?'#e8c24a':'#e8573f'}"></i><b>${u.hp}/${u.s.hp}</b></div>
-   <div class="ks"><span>${mk==='mag'?'MAG':'ATK'} <b>${pw}</b></span><span>DEF <b>${stat(u,'def')}</b></span><span>SPD <b>${stat(u,'spd')}</b></span><span>MOV <b>${movOf(u)}</b></span></div>`;}
+   <div class="ks"><span>${mk==='mag'?'MAG':'ATK'} <b>${pw}</b></span><span>DEF <b>${stat(u,'def')}</b></span><span>SPD <b>${stat(u,'spd')}</b></span><span>MOV <b>${movOf(u)}</b></span></div>
+   <div class="tc ter"><span>${esc(T.n)}</span>${terChips(ch,u).filter(([t])=>!/^(Move cost|Mounted|Heavy)/.test(t)).map(([t,k])=>`<span class="${k}">${esc(t)}</span>`).join('')}</div>`;}
  else{const chest=G.chests.find(x=>x.r===r&&x.c===c&&(x.kind!=='hidden'||x.found));
   h=`<div class="tn">${esc(T.n)}</div><div class="tc">${chips}</div><div class="tt">${esc(T.tip)}${chest?' '+(chest.open?'An empty chest.':chest.kind==='iron'?'An iron chest: needs a scout or an Iron Key.':'A chest: end a unit’s turn here to open it.'):''}</div>`;}
  tt.innerHTML=h;tt.hidden=false;tt.classList.toggle('unit',!!u);
