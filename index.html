@@ -5,20 +5,21 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Ember Crown">
 <meta name="theme-color" content="#0e1512">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="33be808449";
+window.EC_VERSION="d9eb983cdc";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
 if(v&&v!==window.EC_VERSION&&!shown){shown=true;var b=document.createElement("div");b.textContent="New version of The Ember Crown \u2014 tap to update";
 b.style.cssText="position:fixed;left:50%;top:max(10px,env(safe-area-inset-top));transform:translateX(-50%);z-index:99999;background:#dcb25a;color:#0e1512;font:700 15px Alegreya Sans,system-ui,sans-serif;padding:10px 18px;border-radius:10px;box-shadow:0 4px 16px #0008";
 b.onclick=function(){location.reload()};document.body.appendChild(b)}}).catch(function(){})}
+["load","pageshow"].forEach(function(ev){addEventListener(ev,function(){setTimeout(function(){dispatchEvent(new Event("resize"))},300)})});
 document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")check()});addEventListener("focus",check)})();
 </script>
 </head>
