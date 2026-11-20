@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="4b90d44224";
+window.EC_VERSION="13459cdcbc";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -480,7 +480,9 @@ const RULES={
  heal:{mend:14,plain:8},                           // R-030 base heal (plus half MAG); staffs use their might
  chapelPerLv:50,      // R-061 gold per level to heal a gravely wounded unit
  zoc:true,            // R-015 zone of control on/off
- crackWall:20         // R-073 HP of a cracked wall (Z) before it falls into rubble
+ crackWall:20,        // R-073 HP of a cracked wall (Z) before it falls into rubble
+ night:{sight:3,light:3},  // R-075 night missions: tiles each side sees round its units; tiles a campfire or lit torch lights
+ poison:{dmg:2,turns:3}    // R-077 poison: HP lost at the start of each of the target's next turns (never the last HP)
 };
 /* ================= CLASSES ================= */
 // b: base stats at Lv1 [hp,atk,def,mag,res,spd]; g: growth %; pb: bonus on promotion; mv: move; mt: move type; fam: matchup family
@@ -606,6 +608,7 @@ const SK={
  flight:{n:'Flight',kind:'passive',d:'Flies over any terrain. Weak to bows and spears.'},
  trail:{n:'Trailblaze',kind:'passive',d:'Forest and hills cost 1 move.'},
  reveal:{n:'Keen Eyes',kind:'passive',d:'Reveals invisible enemies within 3 tiles.'},
+ poison:{n:'Poison Blade',kind:'passive',d:'A hit that does not kill poisons: 2 damage at the start of each of the target’s next 3 turns. Poison never takes the last HP.'},
  longshot:{n:'Long Shot',kind:'passive',d:'+1 range if the unit has not moved this turn.'},
  pierce:{n:'Piercing Bolt',kind:'passive',d:'Ignores half of the target’s DEF. Cannot fire after moving.'},
  rime:{n:'Rime',kind:'active',uses:3,tgt:'tile',rng:[1,3],area:'cross',dmg:'mag',mult:.6,el:'frost',d:'Frost on 5 tiles: damage and the targets cannot move next turn.'},
@@ -673,7 +676,7 @@ const IT={
  tonic:{n:'Tonic',type:'use',heal:20,price:90,d:'Restores 20 HP.'},
  elixir:{n:'Elixir',type:'use',heal:99,price:400,d:'Restores all HP.'},
  holywater:{n:'Holy Water',type:'use',buff:'holy',price:150,d:'This unit’s attacks are holy for the rest of the battle.'},
- torch:{n:'Torch',type:'use',buff:'torch',price:80,d:'Reveals invisible enemies within 3 tiles for the rest of the battle.'},
+ torch:{n:'Torch',type:'use',buff:'torch',price:80,d:'Reveals invisible enemies within 3 tiles for the rest of the battle. At night it lights 3 tiles round its holder, for friend and foe alike.'},
  key:{n:'Iron Key',type:'key',price:120,d:'Opens one iron chest.'},
  seal:{n:'Knight’s Seal',type:'promo',price:2000,d:'Tier 3 promotion for knights and bannerets.'},
  crest:{n:'Hero’s Crest',type:'promo',price:2000,d:'Tier 3 promotion for infantry and haulers.'},
@@ -2085,7 +2088,9 @@ function mkUnit(o){
  if(o.rec){const r=o.rec;Object.assign(u,{rec:r.uid,hero:r.hero,name:r.hero?HERO[r.hero].n:r.name,cls:r.cls,lv:r.lv,s:r.s,eq:r.eq,look:r.look,guest:r.guest});u.sk=[...new Set([...(CLS[r.cls].sk||[]),...(r.sk||[])])];if(r.hero==='rowan'&&r.oath)u.oath=1;}
  else{const c=CLS[o.cls],lv=o.lv||1;u.cls=o.cls;u.lv=lv;u.name=o.name||c.n;u.s={};STATS.forEach((k,i)=>u.s[k]=clsBase(o.cls)[i]+Math.floor(c.g[i]*(lv-1)/100)+(o.boss&&k==='hp'?8:0));
   u.eq={w:o.w||WDEF[o.cls]||null,a:o.a||ADEF[o.cls]||null,x:null};u.sk=(c.sk||[]).slice();u.look=o.look||{};u.hero=o.hero||null;
-  if(o.hero&&HERO[o.hero]){const h=HERO[o.hero];u.look=Object.assign({},h.look,o.look||{});u.name=h.n;(h.sk||[]).forEach(k=>u.sk.includes(k)||u.sk.push(k));}}
+  if(o.hero&&HERO[o.hero]){const h=HERO[o.hero];u.look=Object.assign({},h.look,o.look||{});u.name=h.n;(h.sk||[]).forEach(k=>u.sk.includes(k)||u.sk.push(k));}
+  for(const k of o.sk||[])if(!u.sk.includes(k))u.sk.push(k);   // extra skills from mission data (stand-ins carry their planned class's skill)
+  if(o.leave!=null){u.leave=o.leave;u.leaveMsg=o.leaveMsg||null;}}   // R-076
  u.hp=u.s.hp;
  for(const k of u.sk){const d=SK[k];if(d&&d.kind==='active')u.uses[k]=d.uses;}
  if(has(u,'vanish'))u.hidden=true;
@@ -2110,8 +2115,18 @@ function rangeOf(u,r,c,moved){
  return [a,b];
 }
 /* ---------- visibility ---------- */
+// R-075 night (T-011): in a mission with night:true each side sees RULES.night.sight tiles round its own units.
+// Campfires (j) and lit torches light RULES.night.light tiles for everyone, and light shows hidden units too.
+let LITC={map:null,fires:[]};
+function isNight(){return !!(G&&G.m&&G.m.night);}
+function lightSources(){if(LITC.map!==G.map){const f=[];for(let r=0;r<G.rows;r++)for(let c=0;c<G.cols;c++)if(G.map[r][c]==='j')f.push([r,c]);LITC={map:G.map,fires:f};}
+ const out=LITC.fires.slice();for(const e of live())if(e.buffs.torch&&!e.carried)out.push([e.r,e.c]);return out;}
+function isLit(r,c){if(!isNight())return true;for(const [lr,lc] of lightSources())if(dist(r,c,lr,lc)<=RULES.night.light)return true;return false;}
+function inSight(r,c,side){for(const e of live())if(friendly(e.side,side)&&!e.carried&&dist(e.r,e.c,r,c)<=RULES.night.sight)return true;return false;}
+function tileSeen(r,c,side){return !isNight()||isLit(r,c)||inSight(r,c,side);}
 function visibleTo(u,side){
  if(friendly(u.side,side))return true;
+ if(isNight()){const lit=isLit(u.r,u.c);if(!lit&&!inSight(u.r,u.c,side))return false;if(lit)return true;}
  if(!u.hidden)return true;
  for(const e of live())if(friendly(e.side,side)&&!e.carried){const d=dist(e.r,e.c,u.r,u.c);if(d<=1)return true;if((has(e,'reveal')||e.buffs.torch)&&d<=3)return true;}
  return false;
@@ -2145,6 +2160,17 @@ function targetsFrom(u,r,c,moved){
  if(has(u,'pierce')&&moved)return [];
  return foesOf(u).filter(e=>visibleTo(e,u.side)&&(d=>d>=rg[0]&&d<=rg[1])(dist(r,c,e.r,e.c)));
 }
+/* ---------- bosses who leave (R-076) and poison (R-077), T-012 ---------- */
+// A unit with `leave` (a share of max HP; 0 = instead of dying) leaves the field when its HP falls to that line:
+// it is gone, not dead, keeps at least 1 HP, and the hit that drove it off earns kill XP.
+function leaveLine(u){return Math.floor(u.s.hp*u.leave);}
+function leaveCheck(u){return u.leave!=null&&!u.dead&&!u.gone&&u.hp<=leaveLine(u);}
+function resolveLeave(u,by){u.hp=Math.max(1,u.hp);u.gone=true;u.left=1;u.hidden=false;u.poison=0;
+ if(by&&by.side==='B'&&u.side==='R')gainXP(by,xpFor(by,u,true)-xpFor(by,u,false));
+ return {t:'leave',u,by,m:u.leaveMsg||`${u.name} flees the battle.`};}
+// start of the poisoned unit's side: lose RULES.poison.dmg, never the last HP
+function poisonTick(u){if(!u.poison||u.dead||u.gone)return null;const n=Math.min(RULES.poison.dmg,Math.max(0,u.hp-1));u.hp-=n;u.poison--;
+ return {n,left:leaveCheck(u)?resolveLeave(u,null):null};}
 /* ---------- cracked walls (R-073, T-010) ---------- */
 // A cracked wall (Z) blocks like a wall until it takes RULES.crackWall damage, then becomes rubble (u).
 // HP lives in G.walls ('r,c' -> HP left); untouched walls are at full HP. Walls never counter and give no XP.
@@ -2218,23 +2244,28 @@ function forecast(a,ar,ac,d,o={}){
  const total=per*h.n,left=d.hp-total;let ctr=null,used=false;
  if(left>0){if(canCounter(a,d,ar,ac,oa)){const ob={ar:d.r,ac:d.c,dr:ar,dc:ac,tiles:0};const hh=hitsOf(d,a,ob);const cp=Math.max(1,Math.round(hitDmg(d,a,ob)*hh.f));ctr={per:cp,n:hh.n,total:cp*hh.n,kill:cp*hh.n>=a.hp};}
   else if(d.countered&&canFight(d)&&!d.defend){const rg=rangeOf(d,d.r,d.c,true);const dd=dist(ar,ac,d.r,d.c);if(rg&&dd>=rg[0]&&dd<=rg[1])used=true;}}
- return {per,n:h.n,total,left:Math.max(0,left),kill:left<=0,ctr,used,kb};
+ return {per,n:h.n,total,left:Math.max(d.leave!=null?1:0,left),kill:left<=0&&d.leave==null,flee:d.leave!=null&&left<=leaveLine(d),ctr,used,kb};
 }
 /* ---------- XP ---------- */
 // T-003: the rules of one attack, with no drawing or waiting. Changes HP, XP, position (knockback) and the
 // counter flag, and returns the events for strike() to play: hit, drain, knock, counter, kill.
 function resolveStrike(a,d,o={}){
  const f=forecast(a,a.r,a.c,d,o),ev=[];
- for(let i=0;i<f.n;i++){d.hp-=f.per;ev.push({t:'hit',u:d,n:f.per,gap:f.n>1&&i<f.n-1});if(d.hp<=0)break;}
+ for(let i=0;i<f.n;i++){d.hp-=f.per;ev.push({t:'hit',u:d,n:f.per,gap:f.n>1&&i<f.n-1});if(d.hp<=0||leaveCheck(d))break;}
  let m=`${a.name} hits ${d.name} for ${f.total}`+(f.n>1?` (×${f.n})`:'');
  if((has(a,'drain')||has(a,'dread'))&&!a.dead){const hl=Math.floor(f.total/2);const was=a.hp;a.hp=Math.min(a.s.hp,a.hp+hl);ev.push({t:'drain',u:a,n:hl,was});}
  gainXP(a,xpFor(a,d,false));
- if(d.hp<=0){m+=' and defeats it.';ev.push({t:'kill',u:d,by:a,how:o.sk==='oath'||isHoly(a,o.sk)?'holy':isMagicAtk(a)&&W(a)&&W(a).el==='fire'?'fire':'hit'});}
+ if(leaveCheck(d)){const Lv=resolveLeave(d,a);m+='. '+Lv.m;ev.push(Lv);}
+ else if(d.hp<=0){m+=' and defeats it.';ev.push({t:'kill',u:d,by:a,how:o.sk==='oath'||isHoly(a,o.sk)?'holy':isMagicAtk(a)&&W(a)&&W(a).el==='fire'?'fire':'hit'});}
  else{
+  if(has(a,'poison')){d.poison=RULES.poison.turns;ev.push({t:'poison',u:d});m+=', poisoning it';}   // R-077
   if(f.kb&&!f.kb.blocked){ev.push({t:'knock',u:d,r:f.kb.nr,c:f.kb.nc});d.r=f.kb.nr;d.c=f.kb.nc;m+=', knocking it back';}
   if(f.ctr&&!a.dead){d.countered=true;ev.push({t:'counter',a:d,d:a});
-   for(let i=0;i<f.ctr.n;i++){a.hp-=f.ctr.per;ev.push({t:'hit',u:a,n:f.ctr.per,gap:f.ctr.n>1});if(a.hp<=0)break;}
-   gainXP(d,xpFor(d,a,false));m+=`, takes ${f.ctr.total} back`;if(a.hp<=0){m+=' and falls.';ev.push({t:'kill',u:a,by:d,how:'hit'});}else m+='.';}
+   for(let i=0;i<f.ctr.n;i++){a.hp-=f.ctr.per;ev.push({t:'hit',u:a,n:f.ctr.per,gap:f.ctr.n>1});if(a.hp<=0||leaveCheck(a))break;}
+   gainXP(d,xpFor(d,a,false));m+=`, takes ${f.ctr.total} back`;
+   if(leaveCheck(a)){const Lv=resolveLeave(a,d);m+='. '+Lv.m;ev.push(Lv);}
+   else if(a.hp<=0){m+=' and falls.';ev.push({t:'kill',u:a,by:d,how:'hit'});}
+   else{if(has(d,'poison')){a.poison=RULES.poison.turns;ev.push({t:'poison',u:a});m+=', poisoned';}m+='.';}}
   else m+='.';}
  return {f,events:ev,msg:m};
 }
@@ -2258,7 +2289,7 @@ async function walk(u,path){
   await tween(cav?95:mtOf(u)==='fly'?90:125,p=>{u.x=x0+(x1-x0)*p;u.y=y0+(y1-y0)*p;});
   u.r=r;u.c=c;u.movedTiles=(u.movedTiles||0)+1;
   const T=resolveTrap(u,r,c);   // T-004: the rule decides, the walk only shows it
-  if(T){hitFx(u,T.dmg);logm(`${u.name} springs a snare!`,T.side);sfx('clang');if(u.hp<=0){u.walk=false;place(u);await kill(u,null,'trap');return {trap:1};}break;}
+  if(T){hitFx(u,T.dmg);logm(`${u.name} springs a snare!`,T.side);sfx('clang');if(leaveCheck(u)){u.walk=false;place(u);await leaveFx(u,resolveLeave(u,null).m,true);return {trap:1};}if(u.hp<=0){u.walk=false;place(u);await kill(u,null,'trap');return {trap:1};}break;}
  }
  u.walk=false;place(u);
  if(stop){stop.hidden=false;stop.revealed=1;ftext(stop.x,stop.y-60,'Ambush!','#ffd36b',true);sfx('stealth');logm(`${u.name} runs into a hidden ${stop.name}!`,stop.side);u.ambushed=1;}
@@ -2298,11 +2329,15 @@ async function strike(a,d,o={}){
   else if(e.t==='knock'){const u=e.u,x0=u.x,y0=u.y,x1=e.c*TS+24,y1=e.r*TS+TS*.78;await tween(140,p=>{u.x=x0+(x1-x0)*p;u.y=y0+(y1-y0)*p;});place(u);}
   else if(e.t==='counter'){if(!sc){await wait(180);await animAttack(e.a,e.d);}}
   else if(e.t==='kill'){delete a.vhp;delete d.vhp;await kill(e.u,e.by,e.how);}
+  else if(e.t==='poison'){ftext(e.u.x,e.u.y-62,'Poisoned','#c9a6ff');parts(e.u.x,e.u.y-24,8,['#a26be0','#c9a6ff'],{spd:50,life:500,size:2});}
+  else if(e.t==='leave'){delete a.vhp;delete d.vhp;await leaveFx(e.u,e.m,false);}
  }
  delete a.vhp;delete d.vhp;
  logm(R.msg,a.side==='R'?'R':'B');
  await wait(200);G.striking=false;
 }
+// R-076: a boss leaves the field (the rule already set u.gone); show it, then check for the win
+async function leaveFx(u,m,log){ftext(u.x,u.y-62,u.leave?'Flees!':'Yields!','#ffd36b',true);ring(u.x,u.y,'#ff9a8a');parts(u.x,u.y-20,14,['#e9e4d8','#8f8778'],{spd:70,life:600,size:2.6});if(log)logm(m,'B');await wait(300);checkEnd();}
 // T-010: hitting a cracked wall (R-073). resolveWallHit() (40_battle.js) decides; this only plays it.
 async function strikeWall(a,r,c){G.striking=true;const spot={r,c,x:c*TS+24,y:r*TS+TS*.78};
  await animAttack(a,spot);const R=resolveWallHit(a,r,c);if(!R){G.striking=false;return null;}
@@ -2419,7 +2454,7 @@ async function useSkill(u,k,t){
    for(const [r,c] of tiles)parts(c*TS+24,r*TS+26,8,d.el==='frost'?['#e8f6ff','#9fd3ff']:['#ffcf6a','#ff7a2e','#d9451f'],{spd:90,grav:-10,life:500});
    {let broke=false;for(const [r,c] of tiles){if(!inMap(r,c)||tile(r,c)!=='Z')continue;const n=wallAoe(u,k),R=hitWall(r,c,n);if(!R)continue;ftext(c*TS+24,r*TS+TS*.78-48,'−'+n,'#ffd9cf',true);if(R.broke){broke=true;logm('The cracked wall crumbles into rubble.','B');}}if(broke)bakeTerrain();}   // R-073: blasts hit cracked walls
    for(const [r,c] of tiles){const v=unitAt(r,c);if(!v||v===u)continue;const dmg=aoeDamage(u,k,v);v.hp-=dmg;hitFx(v,dmg);if(d.el==='frost')v.frozen=2;if(d.el==='fire')v.burned=1;if(!friendly(v.side,u.side))gainXP(u,6);}
-   await wait(300);for(const [r,c] of tiles){const v=unitAt(r,c);if(v&&v.hp<=0)await kill(v,friendly(v.side,u.side)?null:u,d.el==='fire'?'fire':'hit');}break;}
+   await wait(300);for(const [r,c] of tiles){const v=unitAt(r,c);if(v&&leaveCheck(v)){const Lv=resolveLeave(v,friendly(v.side,u.side)?null:u);await leaveFx(v,Lv.m,true);}else if(v&&v.hp<=0)await kill(v,friendly(v.side,u.side)?null:u,d.el==='fire'?'fire':'hit');}break;}
   case 'vines':{sfx('heal');const ps3=poseSet(u);if(ps3){u.pose=ps3.wind;await wait(150);u.pose=ps3.hit;}let vi=0;for(const [r,c] of areaTiles('cross',t.r,t.c))if(!unitAt(r,c)&&tcost('foot',tile(r,c))<99){G.vines.push({r,c,turns:2});FX.push({k:'vine',x:c*TS+24,y:r*TS+38,age:-vi*90,life:900,seed:r*13+c});vi++;}setTimeout(()=>{u.pose=null;},300);gainXP(u,10);await wait(300);break;}
   case 'snare':{G.traps.push({r:t.r,c:t.c,side:u.side,lv:u.lv});sfx('tick');gainXP(u,8);break;}
   case 'sanctuary':{sfx('holy');FX.push({k:'pillar',x:u.x,y:u.y,c:'holy',age:0,life:1000});FX.push({k:'shock',x:u.x,y:u.y,s:110,age:0,life:900,c:'holy'});for(const [r,c] of areaTiles('sq3',u.r,u.c)){const a=unitAt(r,c);if(a&&friendly(a.side,u.side)){const amt=Math.min(healAmt(u,'heal'),a.s.hp-a.hp);a.hp+=amt;if(amt)ftext(a.x,a.y-48,'+'+amt,'#c9f5b0');}}gainXP(u,14);await wait(400);break;}
@@ -2480,7 +2515,8 @@ function checkEnd(){
  if(w.type==='escape'&&w.who==='civ'){const civs=G.units.filter(u=>u.tag==='civ');const dead=civs.filter(u=>u.dead).length,esc=civs.filter(u=>u.escaped).length;if(civs.length-dead<w.need)return endBattle(false,'Too many villagers were lost.');if(esc>=w.need&&civs.every(u=>u.dead||u.escaped))return endBattle(true,'The villagers are safe.');if(esc>=w.need&&!civs.some(u=>!u.dead&&!u.escaped))return endBattle(true,'The villagers are safe.');}
  if((w.type==='escape'||w.type==='reach')&&w.who==='rowan'&&rowan&&rowan.escaped)return endBattle(true,w.type==='reach'?'Rowan reached the goal.':'Rowan escaped.');
  if(w.type==='catch'){const t=G.units.find(u=>u.tag===w.tag);if(t&&t.dead)return endBattle(true,`${t.name} is caught.`);if(t&&t.gone)return endBattle(false,`${t.name} got away.`);}
- if(w.type==='boss'){const bs=G.units.filter(u=>u.boss&&u.side==='R');if(bs.length&&bs.every(u=>u.dead))return endBattle(true,'The enemy leader is defeated.');}
+ if(w.type==='boss'||(w.type==='survive'&&w.boss)){const bs=G.units.filter(u=>u.boss&&u.side==='R');   // R-076: a boss who left counts as beaten; survive+boss wins either way
+  if(bs.length&&bs.every(u=>u.dead||u.left)){const lf=bs.find(u=>u.left);return endBattle(true,lf?(lf.leaveMsg||`${lf.name} flees the battle.`):'The enemy leader is defeated.');}}
  if(w.type==='rout'||w.type==='boss'){const pending=(m.events||[]).some((ev,i)=>!G.fired[i]&&ev.when.rout);if(!pending&&!alive('R').some(u=>!u.ignore))return endBattle(true,'The enemy is routed.');}
  if(!alive('B').some(u=>u.side==='B'&&!u.guest||u.hero==='rowan'))return endBattle(false,'Your army is broken.');
  return false;
@@ -2523,6 +2559,7 @@ async function startSide(side){
   const T=TER[tile(u.r,u.c)];if(T.heal&&u.hp<u.s.hp){const a=Math.min(T.heal,u.s.hp-u.hp);u.hp+=a;ftext(u.x,u.y-48,'+'+a,'#c9f5b0');}
   if(has(u,'regen')&&!u.burned&&u.hp<u.s.hp){const a=Math.min(5,u.s.hp-u.hp);u.hp+=a;ftext(u.x,u.y-48,'+'+a,'#c9f5b0');}
   u.burned=0;
+  {const P=poisonTick(u);if(P){if(P.n)ftext(u.x,u.y-48,'−'+P.n,'#c9a6ff');if(P.left){ring(u.x,u.y,'#ff9a8a');logm(P.left.m,'B');}}}   // R-077
   for(const a of alliesOf(u))if(has(a,'aegis')&&dist(a.r,a.c,u.r,u.c)===1&&u.hp<u.s.hp){u.hp=Math.min(u.s.hp,u.hp+2);}
  }
  for(const u of live())u.countered=false;
@@ -2658,6 +2695,7 @@ function draw(now){
   u.ghost=u.hidden&&u.side!=='R'?1:0;items.push({y:u.y+(u.oy||0)+.01,u});}
  items.sort((a,b)=>a.y-b.y);
  for(const it of items){if(it.u)drawUnit(g,it.u,now,{sel:G.sel===it.u.id,buff:it.u.buffs&&it.u.buffs.atk>0});else it.draw(g,now);}
+ if(isNight())drawNight(g);   // R-075: dark where Blue can't see, a blue tint where it sees by its own eyes, clear in firelight
  for(const u of G.units)if(!u.dead&&!u.carried&&!u.gone&&seenByPlayer(u))drawBars(g,u);
  for(const f of FX){
   if(f.k==='p'){g.globalAlpha=Math.max(0,1-f.age/f.life);g.fillStyle=f.c;g.beginPath();g.arc(f.x,f.y,f.s,0,7);g.fill();g.globalAlpha=1;}
@@ -2673,6 +2711,8 @@ function draw(now){
   else if(f.k==='t'){const p=f.age/f.life;g.globalAlpha=p<.75?1:1-(p-.75)/.25;g.font=`800 ${f.big?17:14}px "Alegreya Sans",sans-serif`;g.textAlign='center';g.lineWidth=3.5;g.strokeStyle='#14100c';const yy=Math.max(f.y-p*26,cam.y+22);/* never rises off the top of the view */g.strokeText(f.t,f.x,yy);g.fillStyle=f.c;g.fillText(f.t,f.x,yy);g.globalAlpha=1;}
  }
 }
+function drawNight(g){for(let r=0;r<G.rows;r++)for(let c=0;c<G.cols;c++){const lit=isLit(r,c);if(lit)continue;
+ g.fillStyle=inSight(r,c,'B')?'rgba(10,16,48,.28)':'rgba(4,6,18,.66)';g.fillRect(c*TS,r?r*TS:-44,TS,r?TS:TS+44);}}
 function drawHighlights(now){
  const C=ctx();
  if(!C.sel&&G.inspect&&G.inspect.unit){const u=byId(G.inspect.unit);if(u&&!u.dead&&seenByPlayer(u)){const R=reachOf(u),th=threatOf(u);for(const k of th)if(!R.ends.has(k)){const [r,c]=k.split(',').map(Number);fillT(r,c,'rgba(225,70,55,.24)','rgba(255,123,102,.45)');}for(const k of R.ends){const [r,c]=k.split(',').map(Number);fillT(r,c,'rgba(225,235,255,.22)','rgba(235,242,255,.55)');}}}
@@ -2702,6 +2742,7 @@ function drawBars(g,u){
  if(u.defend)icon(0,(a,b)=>{g.beginPath();g.moveTo(a-3.5,b-3);g.lineTo(a+3.5,b-3);g.lineTo(a+3.5,b+.5);g.quadraticCurveTo(a,b+5,a-3.5,b+.5);g.closePath();g.fillStyle='#9cc8ff';g.fill();});
  if(u.hidden&&u.side!=='R')icon(0,(a,b)=>{g.strokeStyle='#c9b8ff';g.lineWidth=1.3;ell(g,a,b,3.6,2);g.stroke();g.fillStyle='#c9b8ff';g.beginPath();g.arc(a,b,1,0,7);g.fill();});
  if(u.carrying)icon(0,(a,b)=>{g.fillStyle='#ffe0a8';g.beginPath();g.arc(a,b-1,2,0,7);g.fill();g.fillRect(a-2,b+1,4,3);});
+ if(u.poison)icon(0,(a,b)=>{g.fillStyle='#a26be0';g.beginPath();g.moveTo(a,b-3.5);g.quadraticCurveTo(a+3.5,b+.5,a,b+3.2);g.quadraticCurveTo(a-3.5,b+.5,a,b-3.5);g.fill();});   // R-077 poison drop
  if(u.frozen)icon(0,(a,b)=>{g.strokeStyle='#bfe6ff';g.lineWidth=1.3;for(let i=0;i<3;i++){const an=i*Math.PI/3;line(g,a-Math.cos(an)*3.5,b-Math.sin(an)*3.5,a+Math.cos(an)*3.5,b+Math.sin(an)*3.5);}});
  if(u.loot&&u.side==='R')icon(0,(a,b)=>{g.fillStyle=GOLD;g.beginPath();g.arc(a,b,2.8,0,7);g.fill();});
 }
@@ -4710,7 +4751,8 @@ Object.assign(SPK,{
 MISSIONS.push({
  id:'m11',num:'11',name:"Crow at Midnight",act:2,style:'plains',
  brief:"Three nights south of the Frozen Falls, the company camps by the Highcrest road. In the dark beyond the firelight, the Crows have come to collect.",
- obj:"Survive 7 turns. Rowan must live.",
+ obj:"Survive 7 turns, or defeat Kuro (she will yield, not die). Rowan must live.",
+ night:true,
  map:[
   'FFFFFFFFFFFFFFFFFFFFFF',
   'FFFFFFF.......FFFFFFFF',
@@ -4730,19 +4772,19 @@ MISSIONS.push({
  forced:["rowan"],
  guests:[],
  enemies:[
-  ['shinobi',10,1,19,{pal:'crow',ai:'hunt',boss:1,name:'Kuro',tag:'kuro',gold:200}],
+  ['shinobi',10,1,19,{pal:'crow',ai:'hunt',boss:1,name:'Kuro',tag:'kuro',gold:200,leave:0,leaveMsg:'Kuro drops her blades and yields.'}],
   ['shinobi',8,2,2,{pal:'crow',ai:'hunt'}],
   ['shinobi',8,10,2,{pal:'crow',ai:'hunt'}],
   ['shinobi',8,11,19,{pal:'crow',ai:'hunt'}],
   ['shinobi',8,0,10,{pal:'crow',ai:'aggr'}],
-  ['shinobi',8,4,0,{pal:'crow',ai:'aggr',plan:'kunoichi'}],
-  ['shinobi',8,8,21,{pal:'crow',ai:'aggr',plan:'kunoichi'}]
+  ['shinobi',8,4,0,{pal:'crow',ai:'aggr',plan:'kunoichi',sk:['poison']}],
+  ['shinobi',8,8,21,{pal:'crow',ai:'aggr',plan:'kunoichi',sk:['poison']}]
  ],
  chests:[
   {r:4,c:5,kind:'wood',loot:{item:'torch'}},
   {r:1,c:18,kind:'hidden',loot:{item:'tonic'}}
  ],
- win:{type:'survive',turns:7},
+ win:{type:'survive',turns:7,boss:true},
  events:[
   {when:{start:1},scene:[
    {w:'narr',x:'The fire throws its light three paces into the dark. Beyond that, nothing can be seen. Something can see you.'},
@@ -5219,13 +5261,13 @@ MISSIONS.push({
    {w:'kuro',x:'Hold the pier for me. Do not come out to the boats. They want you there.'}
   ]},
   {when:{turn:2},scene:[
-  ],spawn:[['shinobi',10,10,1,{pal:'crow',ai:'aggr',plan:'kunoichi'}],['shinobi',10,10,2,{pal:'crow',ai:'aggr'}]]},
+  ],spawn:[['shinobi',10,10,1,{pal:'crow',ai:'aggr',plan:'kunoichi',sk:['poison']}],['shinobi',10,10,2,{pal:'crow',ai:'aggr'}]]},
   {when:{turn:3},scene:[
    {w:'raven',x:'I paid for you. Fifty silver, from a farmer who wanted rid of you. I fed you. I taught you. You are mine.'},
    {w:'kuro',x:'Then you were robbed.'}
   ]},
   {when:{turn:4},scene:[
-  ],spawn:[['shinobi',10,9,20,{pal:'crow',ai:'aggr'}],['shinobi',10,10,19,{pal:'crow',ai:'aggr',plan:'kunoichi'}]]},
+  ],spawn:[['shinobi',10,9,20,{pal:'crow',ai:'aggr'}],['shinobi',10,10,19,{pal:'crow',ai:'aggr',plan:'kunoichi',sk:['poison']}]]},
   {when:{turn:6},scene:[
    {w:'raven',x:'Keep her, then, little king. She will cut your throat in time. It is what I made her for.'},
    {w:'narr',x:'The black boat pulls away into the river mist. Mother Raven does not look back.'}
@@ -5623,7 +5665,7 @@ MISSIONS.push({
 MISSIONS.push({
  id:'m21',num:'21',name:"Black Wings",act:2,style:'plains',
  brief:"Midnight on Cinderhold's walls. Something huge is blotting out the stars.",
- obj:"Survive 6 turns. Rowan must live.",
+ obj:"Survive 6 turns, or wound Skarn to half his HP to drive him off. Rowan must live.",
  map:[
   'VVVVVVVVVVVVVVVVVVVVVV',
   'VVVVVVVVVVVVVVVVVVVVVV',
@@ -5643,7 +5685,7 @@ MISSIONS.push({
  forced:["rowan"],
  guests:[],
  enemies:[
-  ['gryphonrider',16,0,10,{pal:'R',ai:'aggr',boss:1,name:'Skarn',tag:'skarn',plan:'wyrm'}],
+  ['gryphonrider',16,0,10,{pal:'R',ai:'aggr',boss:1,name:'Skarn',tag:'skarn',leave:0.5,leaveMsg:'Skarn shrieks and wheels away into the dark.',plan:'wyrm'}],
   ['gryphonrider',12,1,3,{pal:'R',ai:'aggr',plan:'wyvern'}],
   ['gryphonrider',12,1,18,{pal:'R',ai:'aggr',plan:'wyvern'}],
   ['gryphonrider',12,11,5,{pal:'R',ai:'aggr',plan:'wyvern'}],
@@ -5653,7 +5695,7 @@ MISSIONS.push({
   {r:3,c:1,kind:'wood',loot:{item:'elixir'}},
   {r:5,c:6,kind:'wood',loot:{item:'tonic'}}
  ],
- win:{type:'survive',turns:6},
+ win:{type:'survive',turns:6,boss:true},
  events:[
   {when:{start:1},scene:[
    {w:'maelis',x:'Watch the stones glow. Where they glow, his fire falls next turn. Man the ballistae, and do not cluster.'},
