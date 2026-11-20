@@ -1,6 +1,6 @@
-// Ember Crown service worker, version d9eb983cdc. Network first: online play always gets the newest
+// Ember Crown service worker, version 4b90d44224. Network first: online play always gets the newest
 // published build (304s when unchanged); offline play uses the last copy.
-const C="ec-d9eb983cdc";const PRE=["./", "index.html", "manifest.webmanifest", "icon-180.png", "art1.js", "art2.js", "art3.js", "anim/cls_bandit.js", "anim/cls_banditarcher.js", "anim/cls_blackrider.js", "anim/cls_civ.js", "anim/cls_goblin.js", "anim/cls_goblinarcher.js", "anim/cls_goblinthief.js", "anim/cls_ogre.js", "anim/cls_pikeman.js", "anim/cls_soldier.js", "anim/cls_warpriest.js", "anim/cls_wolf.js", "anim/cls_xbowman.js", "anim/hero_edric.js", "anim/hero_elowen.js", "anim/hero_gorm.js", "anim/hero_kael.js", "anim/hero_rowan.js"];
+const C="ec-4b90d44224";const PRE=["./", "index.html", "manifest.webmanifest", "icon-180.png", "art1.js", "art2.js", "art3.js", "anim/cls_bandit.js", "anim/cls_banditarcher.js", "anim/cls_blackrider.js", "anim/cls_civ.js", "anim/cls_goblin.js", "anim/cls_goblinarcher.js", "anim/cls_goblinthief.js", "anim/cls_ogre.js", "anim/cls_pikeman.js", "anim/cls_soldier.js", "anim/cls_warpriest.js", "anim/cls_wolf.js", "anim/cls_xbowman.js", "anim/hero_edric.js", "anim/hero_elowen.js", "anim/hero_gorm.js", "anim/hero_kael.js", "anim/hero_rowan.js"];
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(PRE)).catch(()=>{}))});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener("fetch",e=>{const r=e.request;if(r.method!=="GET")return;const u=new URL(r.url);

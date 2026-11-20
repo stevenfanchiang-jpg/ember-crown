@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="d9eb983cdc";
+window.EC_VERSION="4b90d44224";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -479,7 +479,8 @@ const RULES={
  xp:{hit:10,hitPerLv:3,hitMin:3,kill:28,killPerLv:6,killMin:10,boss:30,max:100,perLevel:100},   // R-040
  heal:{mend:14,plain:8},                           // R-030 base heal (plus half MAG); staffs use their might
  chapelPerLv:50,      // R-061 gold per level to heal a gravely wounded unit
- zoc:true             // R-015 zone of control on/off
+ zoc:true,            // R-015 zone of control on/off
+ crackWall:20         // R-073 HP of a cracked wall (Z) before it falls into rubble
 };
 /* ================= CLASSES ================= */
 // b: base stats at Lv1 [hp,atk,def,mag,res,spd]; g: growth %; pb: bonus on promotion; mv: move; mt: move type; fam: matchup family
@@ -1069,21 +1070,30 @@ const TER={
  '|':{n:'Alley',c:99,d:0,block:1,tip:'A sheer drop between roofs.'},
  p:{n:'Plank',c:1,d:-1,tip:'A narrow plank between roofs.'},
  x:{n:'Stall',c:2,d:2,fort:1,tip:'+2 defense behind the stall.'},
- E:{n:'Exit',c:1,d:0,tip:'The way out.'}
+ E:{n:'Exit',c:1,d:0,tip:'The way out.'},
+ // Act II letters (2026-11-20, T-009). Basic rules only; special behaviour comes with T-010 to T-019.
+ V:{n:'Chasm',c:99,d:0,block:1,tip:'A sheer drop. Only flyers cross.'},
+ Z:{n:'Cracked Wall',c:99,d:0,block:1,tip:'A weak wall with 20 HP. Hit it, or blast it, and it falls into rubble you can walk over.'},
+ Y:{n:'Rail',c:1,d:0,tip:'Mine rails. Open ground.'},
+ Q:{n:'Tide Sand',c:1,d:0,tip:'Wet sand. The tide will cover it.'},
+ j:{n:'Campfire',c:99,d:0,block:1,low:1,tip:'Impassable. Lights the dark around it.'},
+ A:{n:'Ballista',c:1,d:1,fort:1,tip:'+1 defense. A great crossbow on the wall.'}
 };
 function tcost(mt,ch){const T=TER[ch];if(!T)return 99;if(mt==='fly')return 1;if(T.block)return 99;if(mt==='cav'&&T.cav)return T.cav;if(mt==='heavy'&&T.heavy)return T.heavy;return T.c;}
 
 let terr=null,DECOR=[],WATER=[];
 function bakeTerrain(){
- const SC=2,rows=G.rows,cols=G.cols,R=rng(hash(G.mid+G.map.join('')));
+ const SC=2,rows=G.rows,cols=G.cols,R=rng(hash(G.mid+((G.m&&G.m.map)||G.map).join('')));
  terr=document.createElement('canvas');terr.width=cols*TS*SC;terr.height=rows*TS*SC;
  const t=terr.getContext('2d');t.scale(SC,SC);
  const T=(r,c)=>(r<0||r>=rows||c<0||c>=cols)?null:G.map[r][c];
+ const WAS=(r,c)=>((G.m&&G.m.map)||G.map)[r][c];   // the letter at the start of the battle (a broken wall was Z)
  // a painted battlefield (2026-11-16, owner: one cohesive scene per mission, objects spanning many tiles):
  // the painting is the whole ground and scenery; the map letters only carry the rules
  const PM=typeof MAPIMG!=='undefined'&&G.m&&imgOK(MAPIMG[G.mid]);
  if(PM){t.drawImage(MAPIMG[G.mid],0,0,cols*TS,rows*TS);DECOR=[];WATER=[];
   for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const ch=T(r,c),x=c*TS,y=r*TS;
+   if(ch==='u'&&WAS(r,c)==='Z')drawRubble(t,x,y,r,c);
    if(ch==='E'&&T(r,c-1)!=='E'&&T(r-1,c)!=='E')DECOR.push({y:y+40,x0:x,x1:x+TS,y0:y-10,y1:y+TS,draw:(g,tm)=>drawExit(g,x,y,tm)});}
   return;}
  const wet=ch=>ch==='W'||ch==='S'||ch==='B';
@@ -1114,7 +1124,9 @@ function bakeTerrain(){
   if(ch==='c'&&!TX){t.fillStyle='#c7a94a';t.fillRect(x+2,y+2,TS-4,TS-4);t.strokeStyle='#9a7f2e';t.lineWidth=1.3;for(let i=6;i<TS;i+=7){line(t,x+i,y+4,x+i,y+TS-4);}}
   if((ch==='h'||ch==='b')&&!(TX&&lgOn())){t.fillStyle='rgba(168,139,92,.85)';t.beginPath();t.ellipse(x+24,y+30,22,15,0,0,7);t.fill();}
   if(ch==='n'){t.fillStyle='rgba(140,115,80,.6)';t.beginPath();t.ellipse(x+24,y+30,20,12,0,0,7);t.fill();}
-  if(ch==='u'){t.fillStyle='#8f8a7c';for(let i=0;i<7;i++){t.beginPath();t.ellipse(x+4+R()*40,y+4+R()*40,3+R()*4,2+R()*3,R(),0,7);t.fill();}}
+  if(ch==='V')drawChasm(t,x,y,T(r-1,c)!=='V'&&T(r-1,c)!=null,T(r+1,c)!=='V'&&T(r+1,c)!=null,T(r,c-1)!=='V'&&T(r,c-1)!=null,T(r,c+1)!=='V'&&T(r,c+1)!=null);
+  if(ch==='u'&&WAS(r,c)==='Z')drawRubble(t,x,y,r,c);
+  else if(ch==='u'){t.fillStyle='#8f8a7c';for(let i=0;i<7;i++){t.beginPath();t.ellipse(x+4+R()*40,y+4+R()*40,3+R()*4,2+R()*3,R(),0,7);t.fill();}}
   if(stone(ch)){if(!TX){t.fillStyle='#9a9487';t.fillRect(x,y,TS,TS);for(let i=0;i<3;i++)for(let j=0;j<3;j++){t.fillStyle=['#a7a194','#938d80','#a09a8c'][(R()*3)|0];t.fillRect(x+j*16+1,y+i*16+1,14,14);}}
    if(ch==='T'){t.fillStyle='#6a3a78';t.fillRect(x+12,y,24,TS);t.fillStyle=GOLD;t.fillRect(x+12,y,2,TS);t.fillRect(x+34,y,2,TS);}}
   if(ch==='r'||ch==='p'||ch==='|'){t.fillStyle=ch==='|'?'#1e2226':'#5b6170';if(!TX||ch==='|')t.fillRect(x,y,TS,TS);if(ch!=='|'&&!TX){t.strokeStyle='rgba(30,30,40,.5)';t.lineWidth=1;for(let i=0;i<TS;i+=8){line(t,x,y+i,x+TS,y+i);}for(let i=0;i<TS;i+=8)for(let j=0;j<TS;j+=12){line(t,x+j+(i%16?6:0),y+i,x+j+(i%16?6:0),y+i+8);}}
@@ -1156,6 +1168,8 @@ function bakeTerrain(){
   if(ch==='n'){const col=['#3a6fd8','#c9b48a','#8a6440'][(R()*3)|0];DECOR.push({y:y+20,x0:x,x1:x+TS,y0:y,y1:y+TS,draw:g=>drawProp(g,'tent',x+24,y+32,42,36)||drawTent(g,x,y,col)});}
   if(ch==='x'){const col=['#c23a2e','#3a6fd8','#e4b64e','#3f9a5a'][(R()*4)|0];DECOR.push({y:y+20,x0:x,x1:x+TS,y0:y,y1:y+TS,draw:g=>drawProp(g,'stall',x+24,y+32,44,36)||drawStall(g,x,y,col)});}
   if(ch==='f'){const L=T(r,c-1)==='f',Rr=T(r,c+1)==='f',U=T(r-1,c)==='f',Dn=T(r+1,c)==='f';DECOR.push({y:y+30,x0:x,x1:x+TS,y0:y,y1:y+TS,draw:g=>drawFence(g,x,y,L,Rr,U,Dn)});}
+  if(ch==='Z'){const front=T(r+1,c)!=='#'&&T(r+1,c)!=='Z',k=r+','+c;DECOR.push({y:y+TS+.5,x0:x,x1:x+TS,y0:y-16,y1:y+TS,draw:g=>drawCracked(g,x,y,front,k)});}
+  if(ch==='j'){DECOR.push({y:y+30,x0:x,x1:x+TS,y0:y-20,y1:y+TS,draw:(g,tm)=>drawCampfire(g,x,y,tm)});}
   if(ch==='#'){const front=T(r+1,c)!=='#';DECOR.push({y:y+TS+.5,x0:x,x1:x+TS,y0:y-16,y1:y+TS,draw:g=>drawWall(g,x,y,front)});}
   if(ch==='G'){const lw=T(r,c-1)==='#',rw=T(r,c+1)==='#';DECOR.push({y:y+6,x0:x,x1:x+TS,y0:y-18,y1:y+TS,draw:g=>drawGate(g,x,y,lw,rw)});}
   if(ch==='T'){DECOR.push({y:y+20,x0:x,x1:x+TS,y0:y,y1:y+TS,draw:g=>drawThrone(g,x,y)});}
@@ -1199,6 +1213,21 @@ function drawStall(g,x,y,col){g.fillStyle='rgba(0,0,0,.25)';ell(g,x+24,y+30,20,4
 function drawFence(g,x,y,L,Rr,U,Dn){g.strokeStyle=OL;g.lineWidth=3.2;const cx=x+24,cy=y+30;const posts=[];if(L||Rr||(!U&&!Dn)){line(g,L?x:x+8,cy-6,Rr?x+TS:x+40,cy-6);line(g,L?x:x+8,cy-1,Rr?x+TS:x+40,cy-1);g.strokeStyle='#9a6a3c';g.lineWidth=1.8;line(g,L?x:x+8,cy-6,Rr?x+TS:x+40,cy-6);line(g,L?x:x+8,cy-1,Rr?x+TS:x+40,cy-1);posts.push(x+10,x+38);}
  if(U||Dn){g.strokeStyle=OL;g.lineWidth=3.2;line(g,cx,U?y:y+10,cx,Dn?y+TS:y+38);g.strokeStyle='#9a6a3c';g.lineWidth=1.8;line(g,cx,U?y:y+10,cx,Dn?y+TS:y+38);posts.push(cx);}
  for(const px of posts){g.beginPath();g.rect(px-2,cy-12,4,14);sh(g,'#7a4e2b',1);}}
+// Act II terrain looks (T-010): chasm, cracked wall (with its HP once hit), rubble left by a wall, campfire
+function drawChasm(t,x,y,eu,ed,el,er){t.fillStyle='#120e0c';t.fillRect(x,y,TS,TS);const gr=t.createLinearGradient(x,y,x,y+TS);gr.addColorStop(0,'rgba(60,48,40,.9)');gr.addColorStop(.45,'rgba(20,16,14,0)');t.fillStyle=gr;if(eu)t.fillRect(x,y,TS,TS);
+ t.fillStyle='#6b6052';if(eu)t.fillRect(x,y,TS,5);if(ed)t.fillRect(x,y+TS-3,TS,3);if(el)t.fillRect(x,y,4,TS);if(er)t.fillRect(x+TS-4,y,4,TS);
+ t.fillStyle='rgba(255,255,255,.04)';t.fillRect(x+10,y+30,1.5,1.5);t.fillRect(x+33,y+18,1.5,1.5);}
+function drawRubble(t,x,y,r,c){const R=rng(hash('rubble'+r+','+c));t.fillStyle='rgba(60,55,45,.35)';t.beginPath();t.ellipse(x+24,y+30,22,13,0,0,7);t.fill();
+ for(let i=0;i<9;i++){t.fillStyle=['#8f8a7c','#a39d8f','#7a7568'][(R()*3)|0];t.beginPath();t.ellipse(x+5+R()*38,y+12+R()*30,3+R()*5,2+R()*3,R(),0,7);t.fill();}}
+function drawCracked(g,x,y,front,k){drawWall(g,x,y,front);g.strokeStyle='#2e2a24';g.lineWidth=1.8;g.lineCap='round';
+ g.beginPath();g.moveTo(x+10,y-16);g.lineTo(x+18,y-4);g.lineTo(x+14,y+6);g.lineTo(x+24,y+18);g.lineTo(x+21,y+30);g.moveTo(x+38,y-14);g.lineTo(x+31,y-2);g.lineTo(x+36,y+10);g.moveTo(x+18,y-4);g.lineTo(x+28,y-6);g.stroke();
+ const hp=typeof G!=='undefined'&&G&&G.walls?G.walls[k]:null;if(hp!=null){const w=30,bx=x+9,by=y-24;g.fillStyle='rgba(10,10,10,.78)';g.fillRect(bx-1.5,by-1.5,w+3,7);g.fillStyle='#d9a441';g.fillRect(bx,by,w*hp/RULES.crackWall,4);}}
+function drawCampfire(g,x,y,tm){const cx=x+24,cy=y+32,f=Math.sin((tm||0)/110)*.5+Math.sin((tm||0)/47)*.3;
+ const gl=g.createRadialGradient(cx,cy-6,2,cx,cy-6,30);gl.addColorStop(0,'rgba(255,190,90,.35)');gl.addColorStop(1,'rgba(255,190,90,0)');g.fillStyle=gl;g.fillRect(x-8,y-8,TS+16,TS+16);
+ g.fillStyle='#6d6458';for(let i=0;i<7;i++){const a=i/7*Math.PI*2;g.beginPath();g.ellipse(cx+Math.cos(a)*13,cy+Math.sin(a)*6,4,3,0,0,7);g.fill();}
+ g.strokeStyle='#5a3a20';g.lineWidth=4;g.lineCap='round';line(g,cx-10,cy+2,cx+9,cy-4);line(g,cx-9,cy-4,cx+10,cy+2);
+ g.fillStyle='#e8573f';g.beginPath();g.moveTo(cx-8,cy);g.quadraticCurveTo(cx-6,cy-14-f*3,cx,cy-24-f*4);g.quadraticCurveTo(cx+6,cy-14+f*2,cx+8,cy);g.closePath();g.fill();
+ g.fillStyle='#ffd36b';g.beginPath();g.moveTo(cx-4,cy);g.quadraticCurveTo(cx-2,cy-9,cx+1,cy-15+f*3);g.quadraticCurveTo(cx+4,cy-8,cx+4,cy);g.closePath();g.fill();}
 function drawWall(g,x,y,front){const H=16;
  if(front){g.fillStyle='#7d786c';g.fillRect(x,y+TS-H,TS,H);g.strokeStyle='rgba(40,35,30,.5)';g.lineWidth=1;for(let i=0;i<2;i++)line(g,x,y+TS-H+8*i+.5,x+TS,y+TS-H+8*i+.5);g.strokeStyle=OL;g.lineWidth=1.3;g.strokeRect(x,y+TS-H,TS,H);}
  g.fillStyle='#b0aa9b';g.fillRect(x,y-H,TS,TS);g.fillStyle='#a19b8c';for(let i=0;i<3;i++)for(let j=0;j<3;j++)if((i+j)%2)g.fillRect(x+j*16+1,y-H+i*16+1,14,14);
@@ -1876,6 +1905,42 @@ const WORLD1={w:640,h:820,   // node and road positions match the painted world 
   {from:'m9',to:'m10',c:[{x:510,y:196},{x:450,y:125},{x:360,y:110},{x:300,y:96}]}]
 };
 
+// Act II world map (2026-11-20, T-009b): PLACEHOLDER parchment until the Act II painting exists; positions are rough
+const WORLD2={w:640,h:820,act:2,
+ nodes:{
+  m11:{x:320,y:90,lab:'Highcrest Road Camp'},
+  m12:{x:150,y:220,lab:'Silverwood Border'},
+  m13:{x:90,y:330,lab:'The Rotting Grove'},
+  m14:{x:470,y:250,lab:'Gates of Deepforge'},
+  m15:{x:545,y:345,lab:'The Deep Roads'},
+  m15b:{x:600,y:440,lab:'Gnome Mine'},
+  m16:{x:300,y:430,lab:'Brackenford Docks'},
+  m17:{x:540,y:580,lab:'Saltreach Coast'},
+  m18:{x:110,y:560,lab:'Skyreach Eyries'},
+  m19:{x:300,y:630,lab:'Council of Stone'},
+  m20:{x:300,y:750,lab:'Cinderhold'},
+  m21:{x:440,y:770,lab:'Cinderhold Walls'}},
+ camp:{x:330,y:180,lab:'Camp'},
+ segs:[
+  {from:'m11',to:'m12',c:[{x:320,y:90},{x:275,y:123},{x:194,y:186},{x:150,y:220}]},
+  {from:'m12',to:'m13',c:[{x:150,y:220},{x:142,y:246},{x:98,y:303},{x:90,y:330}]},
+  {from:'m13',to:'m14',c:[{x:90,y:330},{x:228,y:293},{x:331,y:286},{x:470,y:250}]},
+  {from:'m14',to:'m15',c:[{x:470,y:250},{x:507,y:271},{x:508,y:323},{x:545,y:345}]},
+  {from:'m15',to:'m16',c:[{x:545,y:345},{x:475,y:363},{x:369,y:411},{x:300,y:430}]},
+  {from:'m16',to:'m17',c:[{x:300,y:430},{x:392,y:470},{x:448,y:540},{x:540,y:580}]},
+  {from:'m17',to:'m18',c:[{x:540,y:580},{x:408,y:563},{x:241,y:576},{x:110,y:560}]},
+  {from:'m18',to:'m19',c:[{x:110,y:560},{x:185,y:573},{x:224,y:616},{x:300,y:630}]},
+  {from:'m19',to:'m20',c:[{x:300,y:630},{x:312,y:660},{x:288,y:720},{x:300,y:750}]},
+  {from:'m20',to:'m21',c:[{x:300,y:750},{x:358,y:746},{x:381,y:773},{x:440,y:770}]},
+  {from:'m15',to:'m15b',c:[{x:545,y:345},{x:575,y:366},{x:569,y:418},{x:600,y:440}]}]
+};
+function curWorld(){const nm=typeof nextMain==='function'?nextMain():null;const last=MISSIONS.filter(m=>CAMP&&CAMP.done&&CAMP.done[m.id]).pop();const a=nm?nm.act:(last?last.act:1);return a>=2?WORLD2:WORLD1;}
+function bakeWorldPlain(k,WD){const W=WD.w,H=WD.h,cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(W*k));cv.height=Math.max(1,Math.round(H*k));const g=cv.getContext('2d');g.scale(k,k);
+ const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#e9dcb8');gr.addColorStop(1,'#d8c79c');g.fillStyle=gr;g.fillRect(0,0,W,H);
+ g.lineCap='round';g.lineJoin='round';
+ for(const s of WD.segs){const c=s.c;g.beginPath();g.moveTo(c[0].x,c[0].y);g.bezierCurveTo(c[1].x,c[1].y,c[2].x,c[2].y,c[3].x,c[3].y);g.strokeStyle='#7a5a36';g.lineWidth=2.4;g.setLineDash(s.to==='m15b'?[2,4]:[6,4]);g.stroke();g.setLineDash([]);}
+ tzMapText(g,'Act II — The Sword (map to be painted)',W/2,H-24,16,'#5a4024');return cv;}
+
 function tzBez(c,u){const v=1-u;return {x:v*v*v*c[0].x+3*v*v*u*c[1].x+3*v*u*u*c[2].x+u*u*u*c[3].x,y:v*v*v*c[0].y+3*v*v*u*c[1].y+3*v*u*u*c[2].y+u*u*u*c[3].y};}
 function tzMapHouse(g,x,y,s,roof){s=s||1;g.beginPath();g.rect(x-5*s,y-7*s,10*s,7*s);sh(g,'#efe2c4',1);tzPoly(g,[x-7*s,y-6*s,x,y-13*s,x+7*s,y-6*s]);sh(g,roof||'#b4553c',1);g.fillStyle='#5a3a22';g.fillRect(x-1.2*s,y-4*s,2.4*s,4*s);}
 function tzMapText(g,txt,x,y,size,col,rot,sp){g.save();g.translate(x,y);if(rot)g.rotate(rot);g.font=`${size}px "IM Fell English SC","Iowan Old Style",Georgia,serif`;g.textAlign='center';g.textBaseline='middle';
@@ -1883,6 +1948,7 @@ function tzMapText(g,txt,x,y,size,col,rot,sp){g.save();g.translate(x,y);if(rot)g
  else{g.lineWidth=3.2;g.strokeStyle='rgba(248,238,210,.7)';g.lineJoin='round';g.strokeText(txt,0,0);g.fillStyle=col;g.fillText(txt,0,0);}
  g.restore();}
 function bakeWorld1(k){
+ {const WD=curWorld();if(WD!==WORLD1)return bakeWorldPlain(k,WD);}
  const W=WORLD1.w,H=WORLD1.h,cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(W*k));cv.height=Math.max(1,Math.round(H*k));const g=cv.getContext('2d');g.scale(k,k);const R=rng(hash('world1'));
  const N=WORLD1.nodes;
  // painted world map (2026-11-17): the painting is the whole land; only the mission road is drawn over it
@@ -2009,12 +2075,15 @@ const isUndead=u=>!!CLS[u.cls].undead;
 const famOf=u=>CLS[u.cls].fam;
 function place(u){u.x=u.c*TS+TS/2;u.y=u.r*TS+TS*.78;}
 
+// R-071 (2026-11-20, T-009b): a promoted class has no base stats of its own; a generic unit of it starts from the
+// base of the class it promotes from (searched through promo lists, any depth) plus its own promotion bonus.
+function clsBase(id){const c=CLS[id];if(c.b)return c.b;for(const k in CLS){const p=CLS[k];if(k!==id&&(p.promo||[]).some(x=>x.to===id)){const pb=clsBase(k);return pb.map((v,i)=>v+((c.pb||[])[i]||0));}}return [15,4,3,0,1,5];}
 function mkUnit(o){
  // o: {rec} | {cls,lv,...}
  const u={id:G.nextId++,side:o.side||'R',pal:o.pal||null,r:o.r,c:o.c,face:o.side==='R'?-1:1,ox:0,oy:0,flash:0,done:false,moved:false,movedTiles:0,
   defend:false,countered:false,buffs:{},uses:{},tag:o.tag||null,ai:o.ai||'aggr',boss:!!o.boss,loot:o.loot||null,gold:o.gold||0,hr:o.r,hc:o.c};  // hr/hc: start tile (raiders carry loot back there)
  if(o.rec){const r=o.rec;Object.assign(u,{rec:r.uid,hero:r.hero,name:r.hero?HERO[r.hero].n:r.name,cls:r.cls,lv:r.lv,s:r.s,eq:r.eq,look:r.look,guest:r.guest});u.sk=[...new Set([...(CLS[r.cls].sk||[]),...(r.sk||[])])];if(r.hero==='rowan'&&r.oath)u.oath=1;}
- else{const c=CLS[o.cls],lv=o.lv||1;u.cls=o.cls;u.lv=lv;u.name=o.name||c.n;u.s={};STATS.forEach((k,i)=>u.s[k]=c.b[i]+Math.floor(c.g[i]*(lv-1)/100)+(o.boss&&k==='hp'?8:0));
+ else{const c=CLS[o.cls],lv=o.lv||1;u.cls=o.cls;u.lv=lv;u.name=o.name||c.n;u.s={};STATS.forEach((k,i)=>u.s[k]=clsBase(o.cls)[i]+Math.floor(c.g[i]*(lv-1)/100)+(o.boss&&k==='hp'?8:0));
   u.eq={w:o.w||WDEF[o.cls]||null,a:o.a||ADEF[o.cls]||null,x:null};u.sk=(c.sk||[]).slice();u.look=o.look||{};u.hero=o.hero||null;
   if(o.hero&&HERO[o.hero]){const h=HERO[o.hero];u.look=Object.assign({},h.look,o.look||{});u.name=h.n;(h.sk||[]).forEach(k=>u.sk.includes(k)||u.sk.push(k));}}
  u.hp=u.s.hp;
@@ -2076,6 +2145,24 @@ function targetsFrom(u,r,c,moved){
  if(has(u,'pierce')&&moved)return [];
  return foesOf(u).filter(e=>visibleTo(e,u.side)&&(d=>d>=rg[0]&&d<=rg[1])(dist(r,c,e.r,e.c)));
 }
+/* ---------- cracked walls (R-073, T-010) ---------- */
+// A cracked wall (Z) blocks like a wall until it takes RULES.crackWall damage, then becomes rubble (u).
+// HP lives in G.walls ('r,c' -> HP left); untouched walls are at full HP. Walls never counter and give no XP.
+function wallHP(r,c){if(tile(r,c)!=='Z')return 0;const k=r+','+c;return G.walls&&G.walls[k]!=null?G.walls[k]:RULES.crackWall;}
+function wallTargetsFrom(u,r,c,moved){
+ const rg=rangeOf(u,r,c,moved);if(!rg)return [];if(has(u,'pierce')&&moved)return [];const out=[];
+ for(let y=Math.max(0,r-rg[1]);y<=Math.min(G.rows-1,r+rg[1]);y++)for(let x=Math.max(0,c-rg[1]);x<=Math.min(G.cols-1,c+rg[1]);x++){
+  const d=dist(r,c,y,x);if(d<rg[0]||d>rg[1]||tile(y,x)!=='Z'||unitAt(y,x))continue;out.push({r:y,c:x});}
+ return out;}
+function wallDmg(a){const w=W(a);return Math.max(1,(isMagicAtk(a)?stat(a,'mag'):stat(a,'atk'))+(w?w.mt:0));}
+function wallAoe(u,k){const d=SK[k],w=W(u);return Math.max(1,Math.round((stat(u,'mag')+(w&&w.wt==='tome'?w.mt:4))*(d.mult||1)));}
+// the bomb hook: any blast (area skills now; sappers and Fizzwick's bombs later) calls this per wall tile
+function hitWall(r,c,n){if(tile(r,c)!=='Z')return null;G.walls=G.walls||{};const hp=Math.max(0,wallHP(r,c)-n),k=r+','+c;
+ if(hp>0){G.walls[k]=hp;return {hp,broke:false};}
+ delete G.walls[k];if(G.m&&G.map===G.m.map)G.map=G.map.slice();G.map[r]=G.map[r].slice(0,c)+'u'+G.map[r].slice(c+1);
+ return {hp:0,broke:true};}
+function resolveWallHit(a,r,c){const n=wallDmg(a),R=hitWall(r,c,n);if(!R)return null;
+ return {n,hp:R.hp,broke:R.broke,msg:`${a.name} hits the cracked wall for ${n}`+(R.broke?' and it crumbles into rubble.':` (${R.hp} left).`)};}
 function healRange(u,sk){return sk==='mend'?[1,2]:[1,1];}
 function healTargets(u,r,c,sk){const [a,b]=healRange(u,sk);return alliesOf(u).filter(a2=>a2.hp<a2.s.hp&&(d=>d>=a&&d<=b)(dist(r,c,a2.r,a2.c)));}
 function healAmt(u,sk){const w=W(u);return (sk==='mend'?RULES.heal.mend:(w&&w.wt==='staff'?w.mt:RULES.heal.plain))+Math.floor(stat(u,'mag')/2);}
@@ -2216,6 +2303,12 @@ async function strike(a,d,o={}){
  logm(R.msg,a.side==='R'?'R':'B');
  await wait(200);G.striking=false;
 }
+// T-010: hitting a cracked wall (R-073). resolveWallHit() (40_battle.js) decides; this only plays it.
+async function strikeWall(a,r,c){G.striking=true;const spot={r,c,x:c*TS+24,y:r*TS+TS*.78};
+ await animAttack(a,spot);const R=resolveWallHit(a,r,c);if(!R){G.striking=false;return null;}
+ ftext(spot.x,spot.y-48,'−'+R.n,'#ffd9cf',true);parts(spot.x,spot.y-24,R.broke?22:9,['#a39d8f','#7a7568','#c4beaf'],{spd:R.broke?120:80,life:R.broke?600:380,size:2.6});
+ if(R.broke){sfx('thud');shake=5;bakeTerrain();}
+ logm(R.msg,a.side==='R'?'R':'B');await wait(200);G.striking=false;return R;}
 // T-004: snares (R-029). Removes the trap and takes the HP; returns what happened, or null.
 function resolveTrap(u,r,c){const tr=G.traps.find(t=>t.r===r&&t.c===c&&!friendly(t.side,u.side));if(!tr)return null;
  G.traps=G.traps.filter(t=>t!==tr);const dmg=RULES.trapBase+tr.lv;u.hp-=dmg;return {dmg,side:tr.side};}
@@ -2324,6 +2417,7 @@ async function useSkill(u,k,t){
    if(d.el==='frost'){for(const [r,c] of tiles)FX.push({k:'icespike',x:c*TS+24,y:r*TS+34,age:0,life:900,n:3+((r*7+c)%3)});}
    else{FX.push({k:'boom',x:tx,y:ty+4,s:k==='meteor'?70:44,age:0,life:k==='meteor'?650:480});FX.push({k:'shock',x:tx,y:ty+14,s:k==='meteor'?90:50,age:0,life:600});for(let i=0;i<(k==='meteor'?10:6);i++)FX.push({k:'smoke',x:tx+(Math.random()-.5)*40,y:ty+(Math.random()-.5)*20,vx:(Math.random()-.5)*30,vy:-20-Math.random()*30,s:10+Math.random()*10,age:0,life:900+Math.random()*600});}
    for(const [r,c] of tiles)parts(c*TS+24,r*TS+26,8,d.el==='frost'?['#e8f6ff','#9fd3ff']:['#ffcf6a','#ff7a2e','#d9451f'],{spd:90,grav:-10,life:500});
+   {let broke=false;for(const [r,c] of tiles){if(!inMap(r,c)||tile(r,c)!=='Z')continue;const n=wallAoe(u,k),R=hitWall(r,c,n);if(!R)continue;ftext(c*TS+24,r*TS+TS*.78-48,'−'+n,'#ffd9cf',true);if(R.broke){broke=true;logm('The cracked wall crumbles into rubble.','B');}}if(broke)bakeTerrain();}   // R-073: blasts hit cracked walls
    for(const [r,c] of tiles){const v=unitAt(r,c);if(!v||v===u)continue;const dmg=aoeDamage(u,k,v);v.hp-=dmg;hitFx(v,dmg);if(d.el==='frost')v.frozen=2;if(d.el==='fire')v.burned=1;if(!friendly(v.side,u.side))gainXP(u,6);}
    await wait(300);for(const [r,c] of tiles){const v=unitAt(r,c);if(v&&v.hp<=0)await kill(v,friendly(v.side,u.side)?null:u,d.el==='fire'?'fire':'hit');}break;}
   case 'vines':{sfx('heal');const ps3=poseSet(u);if(ps3){u.pose=ps3.wind;await wait(150);u.pose=ps3.hit;}let vi=0;for(const [r,c] of areaTiles('cross',t.r,t.c))if(!unitAt(r,c)&&tcost('foot',tile(r,c))<99){G.vines.push({r,c,turns:2});FX.push({k:'vine',x:c*TS+24,y:r*TS+38,age:-vi*90,life:900,seed:r*13+c});vi++;}setTimeout(()=>{u.pose=null;},300);gainXP(u,10);await wait(300);break;}
@@ -2591,6 +2685,8 @@ function drawHighlights(now){
  if(C.reach)for(const k of C.reach.ends){const [r,c]=k.split(',').map(Number);fillT(r,c,'rgba(255,226,140,.26)','rgba(255,226,140,.55)');}
  if(C.phase==='canto'&&C.canto)for(const k of C.canto.ends){const [r,c]=k.split(',').map(Number);fillT(r,c,'rgba(255,226,140,.2)','rgba(255,226,140,.45)');}
  for(const e of C.targets)fillT(e.r,e.c,'rgba(230,70,55,.32)','#ff7b66');
+ if(C.sel&&!G.aim&&!G.aimItem&&(G.phase==='select'||G.phase==='moved'))for(const t of wallTargetsFrom(C.sel,C.sel.r,C.sel.c,G.phase==='moved'&&C.sel.moved))fillT(t.r,t.c,'rgba(230,70,55,.32)','#ff7b66');   // R-073 cracked walls in reach
+ if(G.wallAim&&C.sel&&G.wallAim.id===C.sel.id){const w=G.wallAim;g.strokeStyle=`rgba(255,211,107,${.6+.4*Math.sin(now/150)})`;g.lineWidth=3;g.beginPath();g.roundRect(w.c*TS+2,w.r*TS+2,TS-4,TS-4,6);g.stroke();}
  for(const a of C.heals)fillT(a.r,a.c,'rgba(130,220,110,.3)','#a7e58d');
  if(G.target){const u=byId(G.target);if(u&&!u.dead){g.strokeStyle=`rgba(255,211,107,${.6+.4*Math.sin(now/150)})`;g.lineWidth=3;g.beginPath();g.roundRect(u.c*TS+2,u.r*TS+2,TS-4,TS-4,6);g.stroke();}}
  if(C.reach&&G.hover){const k=G.hover[0]+','+G.hover[1];if(C.reach.ends.has(k)){const p=pathTo(C.reach,G.hover[0],G.hover[1]);g.fillStyle='rgba(255,236,170,.9)';for(let i=1;i<p.length;i++){const [r,c]=p[i];g.beginPath();g.arc(c*TS+24,r*TS+28,i===p.length-1?5:2.8,0,7);g.fill();}}}
@@ -2693,12 +2789,13 @@ function drawFxExtra(g,f){const p=Math.min(1,f.age/f.life);
 // after a move, the unit ends its turn where it stands (Undo can still take it back)
 function emptyTap(){if(!G||!G.started||G.busy||G.over||!human())return;const C=ctx(),sel=C.sel;
  if(!sel){if(G.inspect){G.inspect=null;ui();}return;}
- if(G.target||G.aim||G.aimItem||G.peek){const it=G.aimItem;G.target=null;G.aim=null;G.aimItem=null;G.peek=null;if(it)menuMode='items';menuKey='';sfx('tick');ui();return;}
+ if(G.target||G.wallAim||G.aim||G.aimItem||G.peek){const it=G.aimItem;G.target=null;G.wallAim=null;G.aim=null;G.aimItem=null;G.peek=null;if(it)menuMode='items';menuKey='';sfx('tick');ui();return;}
  if(G.phase==='select'){clearSel();sfx('tick');ui();return;}
  if(G.phase==='moved'){park(sel);stayDefend(sel);finish(sel);}}
 async function onTap(r,c){
  if(!G||!G.started||G.busy||G.over||!human())return;
  const u=unitAt(r,c),vu=u&&seenByPlayer(u)?u:null,C=ctx(),sel=C.sel;
+ const wa=G.wallAim;G.wallAim=null;   // a cracked wall picked last tap (R-073); any other tap drops it
  // peeking at a skill that can't be used: any tap goes back to the menu
  if(G.peek){G.peek=null;menuKey='';sfx('tick');ui();return;}
  // item aiming: the user or an adjacent ally
@@ -2720,6 +2817,7 @@ async function onTap(r,c){
  if(G.phase==='select'){
   if(vu&&!friendly(vu.side,sel.side)&&targetsFrom(sel,sel.r,sel.c,false).includes(vu)){G.phase='moved';G.from=[sel.r,sel.c];sel.moved=false;return targetTap(sel,vu);}
   if(vu&&friendly(vu.side,sel.side)&&vu!==sel&&C.heals.includes(vu)){G.phase='moved';G.from=[sel.r,sel.c];return doHeal(sel,vu);}
+  if(!u&&wallTargetsFrom(sel,sel.r,sel.c,false).some(t=>t.r===r&&t.c===c)){G.phase='moved';G.from=[sel.r,sel.c];sel.moved=false;return wallTap(sel,r,c,wa);}
   const k=r+','+c;
   if(C.reach.ends.has(k)&&(!u||u===sel||!vu)){
    if(u===sel){G.phase='moved';G.from=[sel.r,sel.c];sel.moved=false;ui();return;}
@@ -2735,13 +2833,18 @@ async function onTap(r,c){
   if(vu&&!friendly(vu.side,sel.side)&&C.targets.includes(vu))return targetTap(sel,vu);
   if(vu&&friendly(vu.side,sel.side)&&C.heals.includes(vu))return doHeal(sel,vu);
   if(vu&&vu.side==='B'&&!vu.done){park(sel);stayDefend(sel);finish(sel);return select(vu);}
-  if(G.target||G.aim){G.target=null;G.aim=null;sfx('tick');ui();return;}if(!vu){emptyTap();return;}ui();}
+  if(!u&&wallTargetsFrom(sel,sel.r,sel.c,sel.moved).some(t=>t.r===r&&t.c===c))return wallTap(sel,r,c,wa);
+  if(G.target||G.aim||wa){G.target=null;G.aim=null;sfx('tick');ui();return;}if(!vu){emptyTap();return;}ui();}
 }
 async function targetTap(sel,u){
  if(G.target===u.id){G.undo=[];G.busy=true;ui();await strike(sel,u);if(G.over)return;G.busy=false;
   if(!sel.dead){if(has(sel,'hitrun')&&movOf(sel)-(sel.movedTiles||0)>0){const save=sel.buffs.mov||0;sel.buffs.mov=save-(sel.movedTiles||0);G.canto=reachOf(sel);sel.buffs.mov=save;G.phase='canto';G.target=null;ui();return;}finish(sel);}else{clearSel();ui();}}
  else{G.target=u.id;sfx('tick');ui();}
 }
+// R-073: first tap on a cracked wall in reach picks it (forecast shows), the second tap strikes it
+async function wallTap(sel,r,c,wa){
+ if(wa&&wa.r===r&&wa.c===c&&wa.id===sel.id){G.undo=[];G.busy=true;G.target=null;ui();await strikeWall(sel,r,c);G.busy=false;if(G.over)return;if(!sel.dead)finish(sel);else{clearSel();ui();}}
+ else{G.wallAim={r,c,id:sel.id};G.target=null;sfx('tick');ui();}}
 async function doHeal(p,a){G.undo=[];G.busy=true;ui();await useSkill(p,'heal',{u:a});G.busy=false;finish(p);}
 /* ================= ACTION MENU ================= */
 const IC={atk:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M19 4 L9 14 M6 11 L13 18 M8 16 L4 20"/></svg>',
@@ -2752,7 +2855,7 @@ const IC={atk:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
  back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>'};
 const amenu=$('#amenu');let menuKey='',menuMode='main';
 function renderMenu(C){
- const on=canAct()&&C.sel&&G.phase==='moved'&&!G.target&&!G.aim&&!G.aimItem&&!G.peek;
+ const on=canAct()&&C.sel&&G.phase==='moved'&&!G.target&&!G.wallAim&&!G.aim&&!G.aimItem&&!G.peek;
  if(!on){amenu.hidden=true;menuKey='';menuMode='main';return;}
  const u=C.sel,items=[];
  if(menuMode==='main'){
@@ -2832,9 +2935,11 @@ function ui(){
  if(C.sel){h=unitCard(C.sel);
   if(G.aim){const d=SK[G.aim.sk];h+=`<p class="hint"><b>${esc(d.n)}:</b> ${esc(d.d)} ${d.tgt==='tile'||d.tgt==='enemy'?'Tap a target, then tap again to confirm.':'Tap a highlighted target.'} Tap elsewhere to cancel.</p>`;}
   else{const tg=G.target?byId(G.target):null;
-   if(tg&&!tg.dead&&G.phase!=='ai'){const f=forecast(C.sel,C.sel.r,C.sel.c,tg);h+=`<div class="fc"><div><span>You deal</span><b>${f.total}</b><em>${esc(tg.name)} ${tg.hp} → ${f.left}${f.kill?' · defeated':''}${f.n>1?' · '+f.n+' hits':''}</em></div><div><span>Counter</span><b>${f.ctr?f.ctr.total:0}</b><em>${f.ctr?`${esc(C.sel.name)} ${C.sel.hp} → ${Math.max(0,C.sel.hp-f.ctr.total)}`:f.used?'Counter already used':'No counterattack'}</em></div><p class="go">Tap the target again to attack. Tap elsewhere to cancel.</p></div>`;}
+   const wa=G.wallAim&&G.wallAim.id===C.sel.id?G.wallAim:null;
+   if(wa&&tile(wa.r,wa.c)==='Z'&&G.phase!=='ai'){const n=wallDmg(C.sel),hp=wallHP(wa.r,wa.c);h+=`<div class="fc"><div><span>You deal</span><b>${n}</b><em>Cracked wall ${hp} → ${Math.max(0,hp-n)}${n>=hp?' · crumbles into rubble':''}</em></div><div><span>Counter</span><b>0</b><em>Walls don’t hit back</em></div><p class="go">Tap the wall again to strike it. Tap elsewhere to cancel.</p></div>`;}
+   else if(tg&&!tg.dead&&G.phase!=='ai'){const f=forecast(C.sel,C.sel.r,C.sel.c,tg);h+=`<div class="fc"><div><span>You deal</span><b>${f.total}</b><em>${esc(tg.name)} ${tg.hp} → ${f.left}${f.kill?' · defeated':''}${f.n>1?' · '+f.n+' hits':''}</em></div><div><span>Counter</span><b>${f.ctr?f.ctr.total:0}</b><em>${f.ctr?`${esc(C.sel.name)} ${C.sel.hp} → ${Math.max(0,C.sel.hp-f.ctr.total)}`:f.used?'Counter already used':'No counterattack'}</em></div><p class="go">Tap the target again to attack. Tap elsewhere to cancel.</p></div>`;}
    else if(G.phase==='select')h+=`<p class="hint">Gold: where it can march. Faint red: everywhere it can strike this turn. Tap the unit again to act without moving.</p>`;
-   else if(G.phase==='moved')h+=`<p class="hint">Pick an action from the menu, tap an enemy to attack, or tap the unit to wait.</p>`;
+   else if(G.phase==='moved')h+=`<p class="hint">Pick an action from the menu, tap an enemy${C.sel&&wallTargetsFrom(C.sel,C.sel.r,C.sel.c,C.sel.moved).length?' or a cracked wall':''} to attack, or tap the unit to wait.</p>`;
    else if(G.phase==='canto')h+=`<p class="hint">Hit and Run: tap a gold tile to keep moving, or tap the unit to stay.</p>`;}}
  else if(G.inspect&&G.inspect.unit&&byId(G.inspect.unit)&&!byId(G.inspect.unit).dead){const u=byId(G.inspect.unit);h=unitCard(u)+(u.side==='R'?'<p class="hint">Pale: where it can move. Red: where it can strike.</p>':'');}
  else if(G.inspect&&G.inspect.r!=null){const ch=tile(G.inspect.r,G.inspect.c);const chest=G.chests.find(x=>x.r===G.inspect.r&&x.c===G.inspect.c&&(x.kind!=='hidden'||x.found));h=`<div class="un">${esc(TER[ch].n)}</div><p class="tip">${esc(TER[ch].tip)}</p>${chest?`<p class="tip">${chest.open?'An empty chest.':chest.kind==='iron'?'An iron chest. Needs a scout or an Iron Key.':'A treasure chest. End a unit’s turn on it to open it.'}</p>`:''}`;}
@@ -3032,7 +3137,7 @@ async function battleResult(won,msg){
   ${healed.length?`<p class="obj">Back on their feet: ${healed.map(esc).join(', ')}.</p>`:''}
   ${(m.joins||[]).length?`<p class="obj">${m.joins.map(k=>esc(HERO[k].n)).join(' and ')} joined the company!</p>`:''}
   <button class="b gold" id="resGo">Continue</button>`);miniPortraits();
- $('#resGo').onclick=async()=>{hideScreen();await playSceneP(m.post||[]);G=null;saveCamp();if(MISSIONS.indexOf(m)===MISSIONS.length-1&&!m.optional){await playSceneP(ACT_END);}interlude(m.after||'camp');};
+ $('#resGo').onclick=async()=>{hideScreen();await playSceneP(m.post||[]);G=null;saveCamp();if(!m.optional&&!MISSIONS.some(x=>x.act===m.act&&!x.optional&&!CAMP.done[x.id])){await playSceneP(ACT_ENDS[m.act]||ACT_END);const nx=nextMain();if(nx&&nx.act!==m.act&&ACT_OPEN[nx.act])await playSceneP(ACT_OPEN[nx.act]);}interlude(m.after||'camp');};
 }
 
 /* ================= INTERLUDE (towns, camps, world map) ================= */
@@ -3188,12 +3293,12 @@ function renderWInfo(){const m=SCENE.sel&&missionById(SCENE.sel);if(!m){$('#winf
  $('#winfo').innerHTML=`<div class="sc"><div class="eyebrow">${m.optional?'Optional mission':'Mission '+esc(m.num||'')}</div><h2>${esc(m.name)}</h2><p>${esc(m.brief||'')}</p><div class="obj">${esc(m.obj||'')}</div><div class="row"><button class="b gold" data-ws="${m.id}">March to battle</button></div></div>`;}
 $('#winfo').addEventListener('click',e=>{const b=e.target.closest('[data-ws]');if(!b)return;unlockAudio();sfx('tick');beginMission(b.dataset.ws);});
 function worldLayout(){const w=wcv.clientWidth,h=wcv.clientHeight,d=Math.min(window.devicePixelRatio||1,2);if(wcv.width!==Math.round(w*d)||wcv.height!==Math.round(h*d)){wcv.width=Math.round(w*d);wcv.height=Math.round(h*d);}
- const W1=WORLD1,wide=w>=880||w>h,aw=wide?w-(w>=880&&h>560?430:330):w-24,top=h>560?66:50,ah=wide?h-top-16:h-top-262;const short=wide&&h<=560;let s=short?Math.min(1,aw/W1.w,(ah*1.9)/W1.h):Math.max(.3,Math.min(aw/W1.w,ah/W1.h));const ox=(aw-W1.w*s)/2+(wide?16:12);let oy=top;
- if(short&&W1.h*s>ah){const n=(SCENE.sel&&WORLD1.nodes[SCENE.sel])||WORLD1.nodes.m1||{y:W1.h/2};if(SCENE.wpan==null)SCENE.wpan=0;const base=top+ah/2-n.y*s;const lo=h-6-W1.h*s,hi=top;SCENE.wpan=clamp(base+SCENE.wpan,lo,hi)-base;oy=base+SCENE.wpan;SCENE.wclip=[top,h];}else SCENE.wclip=null;
- const k=Math.min(3,s*d);if(!SCENE.wbase||Math.abs(SCENE.wk-k)>.01){SCENE.wbase=bakeWorld1(k);SCENE.wk=k;}return {w,h,d,s,ox,oy};}
-function nodeOf(id){return WORLD1.nodes[id];}
+ const W1=curWorld(),wide=w>=880||w>h,aw=wide?w-(w>=880&&h>560?430:330):w-24,top=h>560?66:50,ah=wide?h-top-16:h-top-262;const short=wide&&h<=560;let s=short?Math.min(1,aw/W1.w,(ah*1.9)/W1.h):Math.max(.3,Math.min(aw/W1.w,ah/W1.h));const ox=(aw-W1.w*s)/2+(wide?16:12);let oy=top;
+ if(short&&W1.h*s>ah){const n=(SCENE.sel&&curWorld().nodes[SCENE.sel])||curWorld().nodes.m1||{y:W1.h/2};if(SCENE.wpan==null)SCENE.wpan=0;const base=top+ah/2-n.y*s;const lo=h-6-W1.h*s,hi=top;SCENE.wpan=clamp(base+SCENE.wpan,lo,hi)-base;oy=base+SCENE.wpan;SCENE.wclip=[top,h];}else SCENE.wclip=null;
+ const k=Math.min(3,s*d);if(!SCENE.wbase||Math.abs(SCENE.wk-k)>.01||SCENE.wid!==curWorld()){SCENE.wbase=bakeWorld1(k);SCENE.wk=k;SCENE.wid=curWorld();}return {w,h,d,s,ox,oy};}
+function nodeOf(id){return curWorld().nodes[id];}
 function drawWorld(now){
- const L=worldLayout(),W1=WORLD1;wg.setTransform(L.d,0,0,L.d,0,0);wg.fillStyle='#0b120f';wg.fillRect(0,0,L.w,L.h);wg.save();if(SCENE.wclip){wg.beginPath();wg.rect(0,SCENE.wclip[0]-4,L.w,L.h);wg.clip();}wg.drawImage(SCENE.wbase,L.ox,L.oy,W1.w*L.s,W1.h*L.s);
+ const L=worldLayout(),W1=curWorld();wg.setTransform(L.d,0,0,L.d,0,0);wg.fillStyle='#0b120f';wg.fillRect(0,0,L.w,L.h);wg.save();if(SCENE.wclip){wg.beginPath();wg.rect(0,SCENE.wclip[0]-4,L.w,L.h);wg.clip();}wg.drawImage(SCENE.wbase,L.ox,L.oy,W1.w*L.s,W1.h*L.s);
  wg.setTransform(L.d*L.s,0,0,L.d*L.s,L.d*L.ox,L.d*L.oy);
  const opts=openMissions().map(m=>m.id);
  for(const m of MISSIONS){const n=nodeOf(m.id);if(!n)continue;const st=CAMP.done[m.id]?'won':opts.includes(m.id)?'open':'locked';if(m.optional&&st==='locked'&&!(m.requires&&CAMP.flags[m.requires]))continue;
@@ -3203,7 +3308,7 @@ function drawWorld(now){
   pole(wg,n.x,n.y,n.x,n.y-30,WOOD,1.8);const col=st==='won'?PAL.B.main:st==='open'?GOLD:'#8a877e',w=RM?0:Math.sin(now/260+n.x)*1.4;
   wg.beginPath();wg.moveTo(n.x,n.y-30);wg.quadraticCurveTo(n.x+9,n.y-29+w,n.x+19,n.y-30);wg.lineTo(n.x+15,n.y-24);wg.lineTo(n.x+19,n.y-18);wg.quadraticCurveTo(n.x+9,n.y-19-w,n.x,n.y-18);wg.closePath();sh(wg,col,1.1);
   if(st==='won'){wg.strokeStyle='#fff';wg.lineWidth=2;wg.lineCap='round';wg.beginPath();wg.moveTo(n.x+4,n.y-24);wg.lineTo(n.x+7,n.y-21);wg.lineTo(n.x+12,n.y-27);wg.stroke();}}
- const cur=SCENE.sel&&nodeOf(SCENE.sel)||nodeOf(MISSIONS.filter(m=>CAMP.done[m.id]).map(m=>m.id).pop()||'m1')||{x:WORLD1.w/2,y:WORLD1.h-80};
+ const cur=SCENE.sel&&nodeOf(SCENE.sel)||nodeOf(MISSIONS.filter(m=>CAMP.done[m.id]).map(m=>m.id).pop()||'m1')||{x:curWorld().w/2,y:curWorld().h-80};
  const r=heroBy('rowan');wg.save();wg.translate(cur.x-22,cur.y+6);drawUnit(wg,{id:1,cls:r?r.cls:'militia',side:'B',hero:'rowan',look:r?r.look:HERO.rowan.look,oath:r&&r.oath,x:0,y:0,face:1,hp:1},now,{});wg.restore();
  wg.setTransform(L.d,0,0,L.d,0,0);wg.font='700 12px "Alegreya Sans",sans-serif';wg.textAlign='center';wg.textBaseline='middle';
  for(const m of MISSIONS){const n=nodeOf(m.id);if(!n)continue;if(m.optional&&!(m.requires&&CAMP.flags[m.requires])&&!CAMP.done[m.id])continue;const x=L.ox+n.x*L.s,y=L.oy+(n.y+14)*L.s+4;const txt=(m.num?m.num+' · ':'')+(n.lab||m.name);const wd=wg.measureText(txt).width+12;
@@ -4582,6 +4687,1009 @@ MISSIONS.push({
  after:'camp',optional:false,requires:null
 });
 
+/* ================= ACT II — THE SWORD (generated by tools/act2/make_missions.py; scenes by tools/apply_script.py --act 2) =================
+   Classes with a `plan` field are STAND-INS until T-021 adds the planned class. New terrain letters: V Z Y Q j A (31_terrain.js). */
+Object.assign(SPK,{
+ kuro:{n:"Kuro",cls:'shinobi',side:'R',pal:'crow',look:{}},
+ lyra:{n:"Lyra",cls:'archer',side:'G',look:{}},
+ oakheart:{n:"Oakheart",cls:'hauler',side:'G',look:{}},
+ brom:{n:"Brom",cls:'guardsman',side:'G',look:{}},
+ fizzwick:{n:"Fizzwick",cls:'apprentice',side:'G',look:{}},
+ jin:{n:"Jin",cls:'duelist',side:'G',look:{}},
+ seren:{n:"Seren",cls:'gryphonrider',side:'G',look:{}},
+ raven:{n:"Mother Raven",cls:'shinobi',side:'R',pal:'crow',look:{}},
+ zagra:{n:"Zagra",cls:'ogre',side:'R',pal:'gob',look:{}},
+ morrow:{n:"General Morrow",cls:'regentcap',side:'R',pal:'R',look:{}},
+ skarn:{n:"Skarn",cls:'gryphonrider',side:'R',pal:'R',look:{}},
+ ivra:{n:"Envoy Ivra",cls:'civ',side:'B',look:{}},
+ hode:{n:"Thane Hode",cls:'civ',side:'B',look:{}},
+ pell:{n:"Wingwarden Pell",cls:'civ',side:'B',look:{}}
+});
+
+/* ---------- 11 ---------- */
+MISSIONS.push({
+ id:'m11',num:'11',name:"Crow at Midnight",act:2,style:'plains',
+ brief:"Three nights south of the Frozen Falls, the company camps by the Highcrest road. In the dark beyond the firelight, the Crows have come to collect.",
+ obj:"Survive 7 turns. Rowan must live.",
+ map:[
+  'FFFFFFFFFFFFFFFFFFFFFF',
+  'FFFFFFF.......FFFFFFFF',
+  'FFFFF.............HFFF',
+  'FFF.....n....n.....FFF',
+  'FF...x..............FF',
+  'F..........j.........F',
+  '======================',
+  'F....................F',
+  'FF......n.....n.x...FF',
+  'FFF................FFF',
+  'FFFFF.............FFFF',
+  'FFFFFFFF......FFFFFFFF',
+  'FFFFFFFFFFFFFFFFFFFFFF'
+ ],
+ deploy:[[5,9],[5,13],[7,10],[7,12],[4,11],[7,11],[5,10],[5,12]],
+ forced:["rowan"],
+ guests:[],
+ enemies:[
+  ['shinobi',10,1,19,{pal:'crow',ai:'hunt',boss:1,name:'Kuro',tag:'kuro',gold:200}],
+  ['shinobi',8,2,2,{pal:'crow',ai:'hunt'}],
+  ['shinobi',8,10,2,{pal:'crow',ai:'hunt'}],
+  ['shinobi',8,11,19,{pal:'crow',ai:'hunt'}],
+  ['shinobi',8,0,10,{pal:'crow',ai:'aggr'}],
+  ['shinobi',8,4,0,{pal:'crow',ai:'aggr',plan:'kunoichi'}],
+  ['shinobi',8,8,21,{pal:'crow',ai:'aggr',plan:'kunoichi'}]
+ ],
+ chests:[
+  {r:4,c:5,kind:'wood',loot:{item:'torch'}},
+  {r:1,c:18,kind:'hidden',loot:{item:'tonic'}}
+ ],
+ win:{type:'survive',turns:7},
+ events:[
+  {when:{start:1},scene:[
+   {w:'narr',x:'The fire throws its light three paces into the dark. Beyond that, nothing can be seen. Something can see you.'},
+   {w:'nim',x:'Torches. Use them, or keep close to the fire. Crows don’t like being looked at.'}
+  ]},
+  {when:{turn:3},scene:[
+   {w:'crow',x:'The boy. Only the boy. Mother pays for one head.'},
+   {w:'kael',x:'Charming. She hasn’t even met him.'}
+  ],spawn:[['banditarcher',8,1,16,{pal:'crow',ai:'guard',plan:'shadowarcher'}],['banditarcher',8,2,19,{pal:'crow',ai:'guard',plan:'shadowarcher'}]]},
+  {when:{turn:5},scene:[
+   {w:'kuro',x:'You fight like a farmhand. You live like a cat. Hold still.'},
+   {w:'rowan',x:'I’m not much good at holding still. Ask the horses.'}
+  ],spawn:[['shinobi',8,12,9,{pal:'crow',ai:'hunt'}],['shinobi',8,12,13,{pal:'crow',ai:'hunt'}]]},
+  {when:{dead:'kuro'},scene:[
+   {w:'narr',x:'The masked assassin goes down on one knee. Rowan’s blade stops a hand’s width from her throat.'},
+   {w:'kuro',x:'Finish it. The contract is paid either way.'},
+   {w:'rowan',x:'Not by me, it isn’t.'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'Three nights south of the Frozen Falls. The company camps beside the Highcrest road.'},
+  {w:'kael',x:'Second night with no fire on the hills. Either the bandits have gone home, or something’s eating them.'},
+  {w:'nim',x:'Something’s watching us. I can’t see it. That’s how I know it’s good.'},
+  {w:'maelis',x:'Bank the fire high. Whatever comes tonight hates the light more than it hates us.'},
+  {w:'rowan',x:'Then we stay in the light, and we stay together.'}
+ ],
+ post:[
+  {w:'narr',x:'The Crows melt back into the trees. One stays, bound at the wrists, and looks at Rowan as if he were a sum that does not add up.'},
+  {w:'kuro',x:'You had the cut. You did not take it. Why?'},
+  {w:'rowan',x:'You were losing. I was tired. Pick one.'},
+  {w:'kuro',x:'A contract is a contract. Mother Raven paid for your head. Someone will come to collect it.'},
+  {w:'kael',x:'And you want us to keep her? She’ll knife you in your bedroll.'},
+  {w:'rowan',x:'Then I’ll sleep lightly. Untie her, Gorm.'},
+  {w:'gorm',x:'Gorm untied. Now she is a prisoner nobody is holding. Gorm likes that kind best.'},
+  {w:'narr',x:'Kuro does not run. Nobody can say why, least of all Kuro.'}
+ ],
+ joins:[],
+ reward:{gold:300,items:['torch']},
+ after:'camp',optional:false,requires:null
+});
+
+/* ---------- 12 ---------- */
+MISSIONS.push({
+ id:'m12',num:'12',name:"The Silverwood Border",act:2,style:'plains',
+ brief:"The Silverwood's border trees have rotted black. An elf scout will let you pass only if you cut them down without burning her forest.",
+ obj:"Destroy the four blighted wardwoods. Lyra must survive.",
+ map:[
+  '....FFFFWFFFFFFFFFFFFF',
+  '...FFF..WFFF..FFFFFFFF',
+  '..FF....S...F...FFFFFF',
+  '..F.....WFF......FFFFF',
+  '........WFFF..H....FFF',
+  '.....F..WFF.......FFFF',
+  '========B=====....FFFF',
+  '.....F..WFF......FFFFF',
+  '........WF....FF...FFF',
+  '..F.....WFFF.......FFF',
+  '..FF....S..FFF...FFFFF',
+  '...FFF..WFFFFF..FFFFFF',
+  '....FFFFWFFFFFFFFFFFFF'
+ ],
+ deploy:[[5,1],[6,1],[7,1],[5,2],[6,2],[7,2],[4,1],[8,1]],
+ forced:["rowan"],
+ guests:[
+  {cls:'archer',lv:9,name:'Lyra',r:6,c:13,side:'G',tag:'lyra'}
+ ],
+ enemies:[
+  ['ogre',9,2,16,{pal:'hollow',ai:'stay',boss:1,name:'Blighted Wardwood',plan:'blightwood'}],
+  ['ogre',9,4,19,{pal:'hollow',ai:'stay',boss:1,name:'Blighted Wardwood',plan:'blightwood'}],
+  ['ogre',9,9,18,{pal:'hollow',ai:'stay',boss:1,name:'Blighted Wardwood',plan:'blightwood'}],
+  ['ogre',9,11,14,{pal:'hollow',ai:'stay',boss:1,name:'Blighted Wardwood',plan:'blightwood'}],
+  ['wolf',8,5,14,{pal:'beast',ai:'aggr'}],
+  ['wolf',8,7,15,{pal:'beast',ai:'aggr'}],
+  ['wolf',8,8,12,{pal:'beast',ai:'aggr'}],
+  ['wraith',8,3,17,{pal:'hollow',ai:'guard'}],
+  ['wraith',8,9,16,{pal:'hollow',ai:'guard'}]
+ ],
+ chests:[
+  {r:8,c:11,kind:'wood',loot:{item:'embercharm'}},
+  {r:1,c:13,kind:'hidden',loot:{item:'tonic'}}
+ ],
+ win:{type:'boss'},
+ lose:{protect:['lyra']},
+ events:[
+  {when:{start:1},scene:[
+   {w:'lyra',x:'Those wardwoods were my teachers. The rot took them. Cut them down, and do not burn one leaf more than you must.'},
+   {w:'maelis',x:'Fire is the quickest answer to rot.'},
+   {w:'lyra',x:'And to forests. Burn four of my trees, witch, and every bow in the Silverwood turns on you.'}
+  ]},
+  {when:{turn:2},scene:[
+   {w:'lyra',x:'Something walks with the rot, and you can’t see it. I can. Watch where my arrows land.'}
+  ]},
+  {when:{turn:4},scene:[
+   {w:'narr',x:'Wolves pour out of the south-east trees, grey-eyed, silent.'},
+   {w:'lyra',x:'Rot-wolves. Whatever has the trees has them too.'}
+  ],spawn:[['wolf',8,12,19,{pal:'beast',ai:'aggr'}],['wolf',8,11,20,{pal:'beast',ai:'aggr'}]]},
+  {when:{dead:'lyra'},scene:[
+   {w:'lyra',x:'Tell the elders... I watched him. Tell them he was...'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'The Silverwood. Old trees, silver bark, and a silence that feels like listening.'},
+  {w:'maelis',x:'The elves will not ask why we came. They will decide whether we leave.'},
+  {w:'elowen',x:'Something’s wrong with the trees. They smell like the fens did.'},
+  {w:'narr',x:'Ahead, a wardwood the size of a tower turns, slowly, toward the road. Its bark has gone black and wet.'},
+  {w:'lyra',x:'Stop there, humans. One more step and you’re in my forest.'}
+ ],
+ post:[
+  {w:'narr',x:'The last black wardwood falls. The rest of the forest seems to breathe out.'},
+  {w:'lyra',x:'You didn’t burn it. My people said you would. They said every crown burns the woods it rules.'},
+  {w:'rowan',x:'I don’t have a crown. Just a sword I didn’t ask for.'},
+  {w:'lyra',x:'You’ll get one. They always do. So I’m coming with you.'},
+  {w:'rowan',x:'You don’t have to.'},
+  {w:'lyra',x:'I know. I’m not coming to serve you. I’m coming to watch you. When you start to burn things, I’ll be the first to say.'},
+  {w:'kael',x:'An elf whose whole job is disapproving of you. Finally, someone to share the work.'}
+ ],
+ joins:[],
+ reward:{gold:320,items:[]},
+ after:'camp',optional:false,requires:null
+});
+
+/* ---------- 13 ---------- */
+MISSIONS.push({
+ id:'m13',num:'13',name:"The Rotting Grove",act:2,style:'plains',
+ brief:"In the heart of the Silverwood the oldest wardwood is waking. The rot is coming for him from every side. Hold the clearing until he stands.",
+ obj:"Survive 10 turns. Oakheart must survive.",
+ map:[
+  'DDDDDDDDDD..DDDDDDDDDD',
+  'DDDDFFFFFF..FFFFFFDDDD',
+  'DDDFF..............FDD',
+  'DDFF...F......F....FFD',
+  'DDF.....o....o......FD',
+  '......F........F......',
+  '...........T..........',
+  '......F........F......',
+  'DDF.....o....o......FD',
+  'DDFF...F......F....FFD',
+  'DDDFF..............FDD',
+  'DDDDFFFFFF..FFFFFFDDDD',
+  'DDDDDDDDDD..DDDDDDDDDD'
+ ],
+ deploy:[[5,9],[5,12],[7,9],[7,12],[6,9],[6,13],[5,11],[7,11]],
+ forced:["rowan"],
+ guests:[
+  {cls:'hauler',lv:11,name:'Oakheart',r:6,c:11,side:'G',tag:'oakheart'}
+ ],
+ enemies:[
+  ['skeleton',8,0,10,{pal:'hollow',ai:'aggr'}],
+  ['skeleton',8,0,11,{pal:'hollow',ai:'aggr'}],
+  ['ghoul',8,12,10,{pal:'hollow',ai:'aggr'}],
+  ['ghoul',8,12,11,{pal:'hollow',ai:'aggr'}],
+  ['ogre',9,1,1,{pal:'hollow',ai:'aggr',plan:'blightwood'}],
+  ['ogre',9,11,20,{pal:'hollow',ai:'aggr',plan:'blightwood'}]
+ ],
+ chests:[
+  {r:4,c:9,kind:'hidden',loot:{item:'ironring'}},
+  {r:8,c:12,kind:'hidden',loot:{item:'tonic'}}
+ ],
+ win:{type:'survive',turns:10},
+ lose:{protect:['oakheart']},
+ events:[
+  {when:{start:1},scene:[
+   {w:'maelis',x:'Four ways into this clearing. A soldier in a gap holds it. The dead cannot walk past someone standing beside them.'},
+   {w:'rowan',x:'Then we stand beside them. Hold the doors for ten turns.'}
+  ]},
+  {when:{turn:2},scene:[
+  ],spawn:[['ghoul',8,6,0,{pal:'hollow',ai:'aggr'}],['skeleton',8,5,0,{pal:'hollow',ai:'aggr'}],['ghoul',8,6,21,{pal:'hollow',ai:'aggr'}],['skelarcher',8,7,21,{pal:'hollow',ai:'guard'}]]},
+  {when:{turn:4},scene:[
+  ],spawn:[['skeleton',9,0,10,{pal:'hollow',ai:'aggr'}],['skelarcher',9,0,11,{pal:'hollow',ai:'guard'}],['ghoul',9,12,10,{pal:'hollow',ai:'aggr'}],['ghoul',9,12,11,{pal:'hollow',ai:'aggr'}]]},
+  {when:{turn:6},scene:[
+   {w:'narr',x:'The ground shakes. Roots as thick as horses tear up through the moss.'},
+   {w:'oakheart',x:'Who... stands... on my roots?'},
+   {w:'rowan',x:'Friends. Please don’t step on us.'},
+   {w:'oakheart',x:'Friends. A small word. I will think about it. Meanwhile, the rot.'}
+  ],spawn:[['ghoul',9,6,0,{pal:'hollow',ai:'aggr'}],['ghoul',9,5,0,{pal:'hollow',ai:'aggr'}],['skeleton',9,6,21,{pal:'hollow',ai:'aggr'}],['skeleton',9,7,21,{pal:'hollow',ai:'aggr'}]]},
+  {when:{turn:7},scene:[
+  ],spawn:[['wraith',9,0,0,{pal:'hollow',ai:'aggr'}],['wraith',9,12,21,{pal:'hollow',ai:'aggr'}]]},
+  {when:{turn:8},scene:[
+  ],spawn:[['skeleton',9,0,10,{pal:'hollow',ai:'aggr'}],['ghoul',9,12,11,{pal:'hollow',ai:'aggr'}]]},
+  {when:{dead:'oakheart'},scene:[
+   {w:'oakheart',x:'Too slow... always... too slow...'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'The heart of the Silverwood. In a clearing ringed by stones, one wardwood still stands green.'},
+  {w:'lyra',x:'Oakheart. The oldest of them. He hasn’t woken in three hundred years.'},
+  {w:'maelis',x:'He has woken once. I was there. He did not enjoy it.'},
+  {w:'narr',x:'The rot is moving through the trees around them, toward the green one.'},
+  {w:'lyra',x:'If he dies, the whole forest dies with him. Wake slow, old man. We’ll hold the door.'}
+ ],
+ post:[
+  {w:'oakheart',x:'I knew the first High King. Small, like you. He wore the dragon’s heart on his head.'},
+  {w:'oakheart',x:'He asked the peoples to kneel. We did not kneel. We were knelt.'},
+  {w:'rowan',x:'Then I won’t ask.'},
+  {w:'oakheart',x:'You won’t need to. They’ll do it for the name. That is the trouble with names.'},
+  {w:'narr',x:'The old tree pulls his roots out of the earth, one by one. The elves gasp. Wardwoods do not walk.'},
+  {w:'rowan',x:'You don’t have to come. You’ve stood here for three hundred years.'},
+  {w:'oakheart',x:'Yes. Standing still was a choice. So is this. Mine, this time.'}
+ ],
+ joins:[],
+ reward:{gold:340,items:[]},
+ after:'camp',optional:false,requires:null
+});
+
+/* ---------- 14 ---------- */
+MISSIONS.push({
+ id:'m14',num:'14',name:"The Gates of Deepforge",act:2,style:'plains',
+ brief:"Ogres of the Ashfang clans have Deepforge's gate under siege, with catapults on the hills. Come down the north pass and break them.",
+ obj:"Defeat Zagra. Brom must survive.",
+ map:[
+  'MMMMMMMM....MMMMMMMMMM',
+  'MMMMMMMH....HMMMMMMMMM',
+  'MMMM....=......MMMM#MM',
+  'MM......=........MM#MM',
+  'M..n..H.=.........M#RR',
+  '...H....=.........M#RR',
+  '=========.........=GRR',
+  '...n..H...........M#RR',
+  'M...n.............M#RR',
+  'MM......H........MM#MM',
+  'MMMM...........MMMM#MM',
+  'MMMMMMMMH..MMMMMMMMMMM',
+  'MMMMMMMMMMMMMMMMMMMMMM'
+ ],
+ deploy:[[1,9],[1,10],[0,9],[0,10],[2,9],[2,10],[0,8],[0,11]],
+ forced:["rowan"],
+ guests:[
+  {cls:'guardsman',lv:11,name:'Brom',r:6,c:20,side:'G',tag:'brom'}
+ ],
+ enemies:[
+  ['ogre',11,6,2,{pal:'gob',ai:'guard',boss:1,name:'Zagra',tag:'zagra',gold:300}],
+  ['xbowman',10,4,6,{pal:'gob',ai:'stay',plan:'catapult'}],
+  ['xbowman',10,7,6,{pal:'gob',ai:'stay',plan:'catapult'}],
+  ['ogre',9,6,17,{pal:'gob',ai:'aggr'}],
+  ['ogre',9,5,17,{pal:'gob',ai:'aggr'}],
+  ['ogre',9,7,17,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,3,10,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,8,10,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,8,12,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,9,4,{pal:'gob',ai:'guard'}],
+  ['goblinarcher',9,4,12,{pal:'gob',ai:'guard'}],
+  ['goblinarcher',9,8,15,{pal:'gob',ai:'guard'}]
+ ],
+ chests:[
+  {r:4,c:3,kind:'wood',loot:{item:'ironmace'}},
+  {r:11,c:9,kind:'hidden',loot:{item:'seal'}}
+ ],
+ win:{type:'boss'},
+ lose:{protect:['brom']},
+ events:[
+  {when:{start:1},scene:[
+   {w:'brom',x:'Whoever you are up there, you’re late! Hit the catapults or there’ll be no gate left to save!'},
+   {w:'rowan',x:'Is he always this welcoming?'},
+   {w:'gorm',x:'Gorm likes him. He shouts like a friend.'}
+  ]},
+  {when:{turn:2},scene:[
+   {w:'narr',x:'A catapult creaks. A shadow spreads on the ground where the stone will fall.'},
+   {w:'maelis',x:'Watch the ground. Where it darkens, a boulder follows. Do not be standing there.'}
+  ]},
+  {when:{turn:4},scene:[
+  ],spawn:[['goblinthief',9,6,0,{pal:'gob',ai:'thief'}],['goblinthief',9,5,0,{pal:'gob',ai:'thief'}]]},
+  {when:{dead:'zagra'},scene:[
+   {w:'zagra',x:'Grull... will hear... of the little king...'},
+   {w:'kael',x:'Good. Tell him to spell it right.'}
+  ]},
+  {when:{dead:'brom'},scene:[
+   {w:'brom',x:'The hold... I still owe the hold...'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'Deepforge. A dwarven gate cut into the mountain, and an ogre army camped outside it.'},
+  {w:'nim',x:'That’s a lot of ogres. And they brought throwing machines. Rude.'},
+  {w:'maelis',x:'Zagra’s banner. Grull Bonegnaw’s right hand. If the gate falls, the Deep Roads fall with it.'},
+  {w:'kael',x:'And the dwarves will thank whoever saves it. Loudly, I hope. In front of witnesses.'}
+ ],
+ post:[
+  {w:'brom',x:'Brom of Deepforge. Last shield of a house with no hall left. I’d shake your hand, but it’s full of axe.'},
+  {w:'rowan',x:'Your house is gone?'},
+  {w:'brom',x:'Burned out of the Ironvault twenty years back. My father, my brothers, all of them. I owe them a hold.'},
+  {w:'brom',x:'I’ll not rest till it’s paid. And that takes an army. You seem to be collecting one.'},
+  {w:'rowan',x:'You don’t have to come. Your gate needs you.'},
+  {w:'brom',x:'My gate has three hundred dwarves. My dead have only me. I’m coming.'}
+ ],
+ joins:[],
+ reward:{gold:360,items:[]},
+ after:'camp',optional:false,requires:null
+});
+
+/* ---------- 15 ---------- */
+MISSIONS.push({
+ id:'m15',num:'15',name:"The Deep Roads",act:2,style:'plains',
+ brief:"Goblins hold the Deep Roads under Deepforge. Get the ore up the lift, and find out who is knocking behind the walls.",
+ obj:"Reach the lift with Rowan.",
+ map:[
+  '######################',
+  '#....#####...Z..#####E',
+  '#YYYYYYYYYYYYYYYYYYYYE',
+  '#....#...#.......#...#',
+  '#.......##..VV...#...#',
+  '###Z####...VVVV..##Z##',
+  '#......#..VVVVV.....##',
+  '#..YYYYYYYYYYYYYYYY..#',
+  '#..#......VVV...#.....',
+  '#..#..##......###..Z..',
+  '#.....##..#.........##',
+  '####Z####.###...#..ZR#',
+  '######################'
+ ],
+ deploy:[[1,1],[1,2],[1,3],[3,1],[3,2],[3,3],[4,1],[4,2]],
+ forced:["rowan"],
+ guests:[],
+ enemies:[
+  ['goblin',9,6,9,{pal:'gob',ai:'aggr',plan:'sapper'}],
+  ['goblin',9,8,14,{pal:'gob',ai:'aggr',plan:'sapper'}],
+  ['goblin',9,3,12,{pal:'gob',ai:'aggr',plan:'sapper'}],
+  ['goblin',9,10,12,{pal:'gob',ai:'aggr',plan:'sapper'}],
+  ['goblin',9,6,17,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,9,10,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,1,11,{pal:'gob',ai:'guard'}],
+  ['goblinarcher',9,4,19,{pal:'gob',ai:'guard'}],
+  ['goblinarcher',9,10,17,{pal:'gob',ai:'guard'}],
+  ['ogre',10,2,19,{pal:'gob',ai:'guard'}]
+ ],
+ chests:[
+  {r:6,c:2,kind:'wood',loot:{gold:150}},
+  {r:3,c:20,kind:'wood',loot:{item:'tonic'}}
+ ],
+ win:{type:'reach',who:'rowan'},
+ events:[
+  {when:{start:1},scene:[
+   {w:'brom',x:'Stand beside a cart and give it a shove. Cracked walls come down if you hit them hard enough. So does a goblin.'},
+   {w:'fizzwick',x:'Do not hit the walls near me! Or do, but gently! Or quickly! I am out of biscuits!'}
+  ]},
+  {when:{turn:3},scene:[
+   {w:'narr',x:'A goblin waddles toward the carts, hissing, a lit fuse in its fist.'},
+   {w:'brom',x:'Sappers. They burst when they die. Kill them away from the carts, and away from your friends.'}
+  ]},
+  {when:{turn:5},scene:[
+  ],spawn:[['goblinthief',9,8,21,{pal:'gob',ai:'thief'}],['goblinthief',9,9,21,{pal:'gob',ai:'thief'}]]},
+  {when:{turn:9},scene:[
+  ],spawn:[['goblinthief',9,8,21,{pal:'gob',ai:'thief'}],['goblin',9,9,21,{pal:'gob',ai:'aggr'}]]},
+  {when:{reach:{r:11,c:20}},scene:[
+   {w:'fizzwick',x:'Air! Light! People! Fizzwick of the Copperbottoms, inventor, at your service. Mostly.'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'The Deep Roads run under Deepforge, mile after mile of dark. Ore carts sit on the rails where the miners left them.'},
+  {w:'brom',x:'The hold needs that ore up the lift. Goblins have the tunnels. Push the carts, smash the goblins. Simple.'},
+  {w:'nim',x:'Something’s knocking behind that wall.'},
+  {w:'narr',x:'Faint, steady, very annoyed: knock, knock, knock-knock.'},
+  {w:'fizzwick',x:'Hello? Hello! If anyone out there has a hammer, I will pay you in compliments!'}
+ ],
+ post:[
+  {w:'fizzwick',x:'You’ve saved my life! I’d swear you eternal loyalty, but I’m contractually forbidden. Page thirty-one.'},
+  {w:'rowan',x:'Who holds your contract?'},
+  {w:'fizzwick',x:'The Bramblecog Mining Concern. Forty pages. I keep it in my hat. Nineteen years left. Fourteen if I’m good.'},
+  {w:'narr',x:'Nim holds up a fat roll of paper. Nobody saw her take it.'},
+  {w:'nim',x:'This one? Forty pages. Smells like a hat.'},
+  {w:'fizzwick',x:'Give that back! Without it I’m just a gnome with bombs! Wait. That sounds wonderful.'},
+  {w:'rowan',x:'You don’t have to come with us.'},
+  {w:'fizzwick',x:'I know! Isn’t it terrifying? I’ll need a bigger hat.'}
+ ],
+ joins:[],
+ reward:{gold:380,items:[]},
+ after:'camp',optional:false,requires:null
+});
+
+/* ---------- 15b ---------- */
+MISSIONS.push({
+ id:'m15b',num:'15b',name:"The Gnome's Golden Gear",act:2,style:'plains',
+ brief:"An old gnome mine, sealed for two hundred years. Somewhere inside is the Golden Gear, and goblin raiders want it too.",
+ obj:"Reach the vault, then get Rowan to the exit.",
+ map:[
+  '######################',
+  '#....#......#....x...#',
+  '#....#..YYYYYYY..#...#',
+  '#..x.Z..Y.....Y..#..x#',
+  '#....#..Y.###.Y..Z...#',
+  '###.##..Y.#T#.Y..#####',
+  '#.......Y.#.#.Y......#',
+  '#..YYYYYY.....YYYYY..#',
+  '#..#...........#.....#',
+  '#.x#..VVV..o...Z..x..#',
+  '#..#..VVV......#.....#',
+  '#.....###..x...#...E.#',
+  '######################'
+ ],
+ deploy:[[1,1],[1,2],[2,1],[2,2],[1,3],[2,3]],
+ forced:["rowan"],
+ guests:[],
+ enemies:[
+  ['goblinthief',10,1,15,{pal:'gob',ai:'thief'}],
+  ['goblinthief',10,3,19,{pal:'gob',ai:'thief'}],
+  ['goblinthief',10,8,17,{pal:'gob',ai:'thief'}],
+  ['goblinthief',10,11,3,{pal:'gob',ai:'thief'}],
+  ['goblinthief',10,6,18,{pal:'gob',ai:'thief'}],
+  ['goblin',10,7,10,{pal:'gob',ai:'aggr',plan:'sapper'}],
+  ['goblin',10,9,13,{pal:'gob',ai:'aggr',plan:'sapper'}],
+  ['goblinarcher',10,4,16,{pal:'gob',ai:'guard'}],
+  ['goblinarcher',10,10,18,{pal:'gob',ai:'guard'}]
+ ],
+ chests:[
+  {r:1,c:17,kind:'wood',loot:{gold:120}},
+  {r:3,c:3,kind:'wood',loot:{item:'tonic'}},
+  {r:3,c:20,kind:'wood',loot:{gold:150}},
+  {r:9,c:2,kind:'wood',loot:{item:'elixir'}},
+  {r:11,c:11,kind:'wood',loot:{gold:200}},
+  {r:5,c:11,kind:'iron',loot:{gold:500}}
+ ],
+ win:{type:'reach',who:'rowan'},
+ events:[
+  {when:{start:1},scene:[
+   {w:'fizzwick',x:'Goblin raiders! They’ll grab every chest and run! Get to the vault first, then out. Bring shiny things.'}
+  ]}
+ ],
+ pre:[
+  {w:'fizzwick',x:'Before the goblins came, I found a gnome mine nobody had opened in two hundred years. Inside it, the Golden Gear.'},
+  {w:'brom',x:'A gear. You want us to risk our necks for a gear.'},
+  {w:'fizzwick',x:'The gear that runs the Great Forge of Ironvault! With it I could build anything. Also it’s very shiny.'}
+ ],
+ post:[
+  {w:'fizzwick',x:'The Golden Gear. Hold it up to the light. No, the other way. Isn’t it beautiful?'},
+  {w:'brom',x:'It’s a gear.'},
+  {w:'fizzwick',x:'And you’re a dwarf, and I don’t hold that against you. Give me a forge and you’ll see what it does.'}
+ ],
+ joins:[],
+ reward:{gold:200,items:[]},
+ after:'camp',optional:true,requires:'gearfound'
+});
+
+/* ---------- 16 ---------- */
+MISSIONS.push({
+ id:'m16',num:'16',name:"Kuro's Choice",act:2,style:'town',
+ brief:"Brackenford docks at dusk. A black-sailed boat is coming for Kuro, and Mother Raven is on it.",
+ obj:"Hold the pier for 8 turns. Kuro must survive.",
+ map:[
+  '#####kkkkkkkkk########',
+  '#hh#k=========k#hh#xx#',
+  '#hh#k=x=====x=k#hh#..#',
+  '....=====x=======.....',
+  '..x...........x....x..',
+  '======================',
+  '..x....x......x....x..',
+  'BBBB..BBBB....BBBB..BB',
+  'WBBWWWWBBWWWWWWBBWWWBW',
+  'WBBWWWWBBWWWWWWBBWWWBW',
+  'WBBWWWWBBWWWWWWBBBBBBW',
+  'WWWWWWWBBWWWWWWWWWWWWW',
+  'WWWWWWWWWWWWWWWWWWWWWW'
+ ],
+ deploy:[[4,8],[4,9],[4,10],[4,11],[5,8],[5,9],[5,10],[5,11]],
+ forced:["rowan"],
+ guests:[
+  {cls:'shinobi',lv:11,name:'Kuro',r:10,c:8,side:'G',tag:'kuro',pal:'crow'}
+ ],
+ enemies:[
+  ['shinobi',14,10,20,{pal:'crow',ai:'stay',name:'Mother Raven',tag:'raven'}],
+  ['shinobi',10,9,1,{pal:'crow',ai:'aggr'}],
+  ['shinobi',10,9,2,{pal:'crow',ai:'aggr'}],
+  ['shinobi',10,8,16,{pal:'crow',ai:'aggr'}],
+  ['shinobi',10,9,16,{pal:'crow',ai:'aggr'}],
+  ['banditarcher',10,10,17,{pal:'crow',ai:'guard',plan:'shadowarcher'}],
+  ['banditarcher',10,10,18,{pal:'crow',ai:'guard',plan:'shadowarcher'}]
+ ],
+ chests:[
+  {r:1,c:1,kind:'wood',loot:{item:'torch'}},
+  {r:2,c:6,kind:'wood',loot:{gold:200}}
+ ],
+ win:{type:'survive',turns:8},
+ lose:{protect:['kuro']},
+ events:[
+  {when:{start:1},scene:[
+   {w:'raven',x:'Little Kuro. Come home. I will only cut off the hand that held back the blade.'},
+   {w:'kuro',x:'Hold the pier for me. Do not come out to the boats. They want you there.'}
+  ]},
+  {when:{turn:2},scene:[
+  ],spawn:[['shinobi',10,10,1,{pal:'crow',ai:'aggr',plan:'kunoichi'}],['shinobi',10,10,2,{pal:'crow',ai:'aggr'}]]},
+  {when:{turn:3},scene:[
+   {w:'raven',x:'I paid for you. Fifty silver, from a farmer who wanted rid of you. I fed you. I taught you. You are mine.'},
+   {w:'kuro',x:'Then you were robbed.'}
+  ]},
+  {when:{turn:4},scene:[
+  ],spawn:[['shinobi',10,9,20,{pal:'crow',ai:'aggr'}],['shinobi',10,10,19,{pal:'crow',ai:'aggr',plan:'kunoichi'}]]},
+  {when:{turn:6},scene:[
+   {w:'raven',x:'Keep her, then, little king. She will cut your throat in time. It is what I made her for.'},
+   {w:'narr',x:'The black boat pulls away into the river mist. Mother Raven does not look back.'}
+  ],spawn:[['banditarcher',10,8,1,{pal:'crow',ai:'guard',plan:'shadowarcher'}],['shinobi',10,8,20,{pal:'crow',ai:'aggr'}]]},
+  {when:{dead:'kuro'},scene:[
+   {w:'kuro',x:'Hers... to the end, then...'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'Brackenford again, the river docks at dusk. Kuro has walked beside the company for three weeks and never once been asked where she is going.'},
+  {w:'kuro',x:'There is a boat coming. Black sail. It is for me.'},
+  {w:'nim',x:'Your clan?'},
+  {w:'kuro',x:'My owner. Mother Raven does not forgive a lost contract. Or a lost knife.'},
+  {w:'rowan',x:'Then she can say so to all of us.'},
+  {w:'kuro',x:'You do not understand. I am hers. She bought me. Paid in silver.'}
+ ],
+ post:[
+  {w:'narr',x:'The Crows are gone. Kuro stands at the end of the pier, holding her mask, looking at the water.'},
+  {w:'kuro',x:'She branded me when I was six. Here, under the collar. I thought it meant I belonged somewhere.'},
+  {w:'nim',x:'It just means somebody owned you. I’ve got one too. Orphanage stamp. It washes off eventually. Mostly.'},
+  {w:'rowan',x:'You don’t have to stay. You’re free to go anywhere.'},
+  {w:'kuro',x:'I know. That is the problem. I have never been anywhere I was not sent.'},
+  {w:'kuro',x:'So I will stay. That is not a debt. I do not know yet what it is.'}
+ ],
+ joins:[],
+ reward:{gold:400,items:[]},
+ after:'brackenford',optional:false,requires:null
+});
+
+/* ---------- 17 ---------- */
+MISSIONS.push({
+ id:'m17',num:'17',name:"The Shipwreck Coast",act:2,style:'plains',
+ brief:"A Jade Isles ship lies broken on the Saltreach sands. The tide is turning, and the drowned are crawling out of the surf.",
+ obj:"Get 4 survivors up the cliff path. Rowan must live.",
+ map:[
+  'MMMMMMMHH=EHHMMMMMMMMM',
+  'MMMHH...H=.H..HHMMMMMM',
+  'MH.....o..=.....o..HMM',
+  'H..h.......=........HM',
+  ',,,,,,o,,,,,=,,,,,,,,H',
+  ',,,,,,,,,,,,,,,,,o,,,,',
+  ',,o,,,,QQQQ,,,,,,,,,,,',
+  'QQQQQQQQ##xQQQQQQQoQQQ',
+  'QQQ#x##QQ###QQQQQQQQQQ',
+  'QQQQQQQQQQQQQQQ##x#QQQ',
+  'QQQQQQQQQQQQQQQQQQQQQQ',
+  'WWWWWWWWWWWWWWWWWWWWWW',
+  'WWWWWWWWWWWWWWWWWWWWWW'
+ ],
+ deploy:[[1,9],[1,10],[2,9],[2,10],[3,10],[3,11],[2,11],[1,6]],
+ forced:["rowan"],
+ guests:[
+  {cls:'civ',lv:3,name:'Sailor',r:8,c:7,side:'B',tag:'civ'},
+  {cls:'civ',lv:3,name:'Sailor',r:9,c:10,side:'B',tag:'civ'},
+  {cls:'civ',lv:3,name:'Sailor',r:8,c:13,side:'B',tag:'civ'},
+  {cls:'civ',lv:3,name:'Sailor',r:10,c:18,side:'B',tag:'civ'},
+  {cls:'civ',lv:3,name:'Sailor',r:7,c:3,side:'B',tag:'civ'},
+  {cls:'civ',lv:3,name:'Sailor',r:9,c:5,side:'B',tag:'civ'},
+  {cls:'duelist',lv:12,name:'Jin',r:7,c:12,side:'G',tag:'jin'}
+ ],
+ enemies:[
+  ['ghoul',10,10,2,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],
+  ['ghoul',10,10,9,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],
+  ['ghoul',10,10,15,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],
+  ['ghoul',10,10,20,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],
+  ['skelarcher',10,3,19,{pal:'hollow',ai:'guard'}],
+  ['skelarcher',10,2,2,{pal:'hollow',ai:'guard'}]
+ ],
+ chests:[
+  {r:8,c:4,kind:'wood',loot:{item:'lucky'}},
+  {r:9,c:17,kind:'wood',loot:{gold:250}}
+ ],
+ win:{type:'escape',who:'civ',need:4},
+ events:[
+  {when:{start:1},scene:[
+   {w:'jin',x:'Whoever you are, help the sailors up the cliff. I will hold the water.'},
+   {w:'maelis',x:'The tide comes up a row at a time. Watch the sand darken. Do not be standing on it when the sea arrives.'}
+  ]},
+  {when:{turn:2},scene:[
+  ],spawn:[['ghoul',10,10,13,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],['ghoul',10,10,1,{pal:'hollow',ai:'aggr',plan:'seaghoul'}]]},
+  {when:{turn:3},scene:[
+  ],spawn:[['ghoul',10,10,18,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],['ghoul',10,10,6,{pal:'hollow',ai:'aggr',plan:'seaghoul'}]]},
+  {when:{turn:4},scene:[
+   {w:'narr',x:'The first row of sand vanishes under grey water.'},
+   {w:'elowen',x:'Faster! Gorm, carry whoever can’t walk!'}
+  ],spawn:[['ghoul',10,10,2,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],['ghoul',10,10,11,{pal:'hollow',ai:'aggr',plan:'seaghoul'}]]},
+  {when:{turn:5},scene:[
+  ],spawn:[['ghoul',10,10,7,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],['ghoul',10,10,16,{pal:'hollow',ai:'aggr',plan:'seaghoul'}]]},
+  {when:{turn:6},scene:[
+  ],spawn:[['ghoul',10,10,12,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],['ghoul',10,10,0,{pal:'hollow',ai:'aggr',plan:'seaghoul'}]]},
+  {when:{dead:'jin'},scene:[
+   {w:'jin',x:'My lord... I have not... finished...'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'Saltreach, on the eastern coast. A storm has torn a Jade Isles ship apart on the sandbars.'},
+  {w:'elowen',x:'There are people on the wreck. Still alive.'},
+  {w:'lyra',x:'The tide turns within the hour. Anything left on that sand drowns.'},
+  {w:'narr',x:'Pale shapes rise out of the surf, crawling up the beach toward the survivors.'},
+  {w:'kuro',x:'Sea-dead. And there. A Heron Clan sword. I would know that stance anywhere.'}
+ ],
+ post:[
+  {w:'jin',x:'Jin of the Heron Clan. I thank you for the sailors. They are not mine, but I would have hated to watch.'},
+  {w:'rowan',x:'What brought you across the sea?'},
+  {w:'jin',x:'An oni. Shura, the Red Oni. It killed my lord and fled west. My oath outlived him. A dead man holds my leash.'},
+  {w:'kuro',x:'A Heron. Of course it is a Heron. They are so tediously honourable.'},
+  {w:'jin',x:'And you are a Crow. Your clan killed my teacher’s teacher.'},
+  {w:'kuro',x:'Your clan burned mine out of three islands. We could compare lists. It would take all night.'},
+  {w:'rowan',x:'You don’t have to travel with us, Jin. Not with her.'},
+  {w:'jin',x:'I know. I will travel with you, and watch her. She will watch me. It will be good practice for both of us.'}
+ ],
+ joins:[],
+ reward:{gold:420,items:[]},
+ after:'camp',optional:false,requires:null
+});
+
+/* ---------- 18 ---------- */
+MISSIONS.push({
+ id:'m18',num:'18',name:"Skyreach Eyries",act:2,style:'plains',
+ brief:"Skyreach's gryphon eyries hang above the clouds. Wyvern riders are diving on the nests.",
+ obj:"Survive 8 turns. Seren must survive.",
+ map:[
+  'VVVVVVVVVVVVVVVVVVVVVV',
+  'VV...HVVVVVVVVVV.H..VV',
+  'V..n...VVVVVVVV.....VV',
+  'V.....BBBBVVVVVVV..n.V',
+  'VV...VVVV.......BBB..V',
+  'VVVVVVVV....h....VVVVV',
+  'VVVVVVVV.........VVVVV',
+  'VVVVVVVV....H....VVVVV',
+  'VV....BBB.......VVVVVV',
+  'V..n..VVVVVVVVBBB....V',
+  'V....HVVVVVVVVVVV..H.V',
+  'VVV..VVVVVVVVVVVVV..VV',
+  'VVVVVVVVVVVVVVVVVVVVVV'
+ ],
+ deploy:[[5,10],[5,11],[6,9],[6,10],[6,11],[6,12],[7,10],[7,11]],
+ forced:["rowan"],
+ guests:[
+  {cls:'civ',lv:1,name:'Gryphon Nest',r:2,c:3,side:'B',tag:'nest'},
+  {cls:'civ',lv:1,name:'Gryphon Nest',r:3,c:19,side:'B',tag:'nest'},
+  {cls:'civ',lv:1,name:'Gryphon Nest',r:9,c:3,side:'B',tag:'nest'},
+  {cls:'gryphonrider',lv:12,name:'Seren',r:5,c:13,side:'G',tag:'seren'}
+ ],
+ enemies:[
+  ['gryphonrider',10,0,5,{pal:'R',ai:'aggr',plan:'wyvern'}],
+  ['gryphonrider',10,0,16,{pal:'R',ai:'aggr',plan:'wyvern'}],
+  ['gryphonrider',10,12,4,{pal:'R',ai:'aggr',plan:'wyvern'}],
+  ['gryphonrider',10,12,17,{pal:'R',ai:'aggr',plan:'wyvern'}],
+  ['gryphonrider',11,0,10,{pal:'R',ai:'aggr',plan:'wyvernrider'}],
+  ['gryphonrider',11,12,10,{pal:'R',ai:'aggr',plan:'wyvernrider'}],
+  ['gryphonrider',11,6,0,{pal:'R',ai:'aggr',plan:'wyvernrider'}],
+  ['gryphonrider',12,6,21,{pal:'R',ai:'aggr',name:'Wyvern Captain',plan:'wyvernrider'}]
+ ],
+ chests:[
+  {r:1,c:5,kind:'wood',loot:{item:'boots'}},
+  {r:10,c:19,kind:'hidden',loot:{item:'steellance'}}
+ ],
+ win:{type:'survive',turns:8},
+ lose:{protect:['seren']},
+ events:[
+  {when:{start:1},scene:[
+   {w:'seren',x:'Wyverns cross the sky like it’s nothing. You can’t. Use the bridges, and keep your spears up.'},
+   {w:'lyra',x:'Arrows hit flyers hard. I’ll take the high ones.'}
+  ]},
+  {when:{turn:3},scene:[
+   {w:'narr',x:'More wyverns come out of the clouds. One rider carries a Regent’s banner.'},
+   {w:'seren',x:'The Regent’s buying wyverns now. He must want the nests badly. Or wants us to know he can reach us.'}
+  ],spawn:[['gryphonrider',10,0,0,{pal:'R',ai:'aggr',plan:'wyvern'}],['gryphonrider',10,0,21,{pal:'R',ai:'aggr',plan:'wyvern'}]]},
+  {when:{turn:5},scene:[
+  ],spawn:[['gryphonrider',11,12,0,{pal:'R',ai:'aggr',plan:'wyvernrider'}],['gryphonrider',11,12,21,{pal:'R',ai:'aggr',plan:'wyvernrider'}]]},
+  {when:{dead:'seren'},scene:[
+   {w:'seren',x:'Gale... fly... don’t wait for me...'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'Skyreach. Cliff eyries above the clouds, where gryphons nest and the wind never stops.'},
+  {w:'lyra',x:'Riders. Wyverns. They’re coming for the nests.'},
+  {w:'narr',x:'A gryphon rider drops out of the sky beside them, lance down, breathing hard.'},
+  {w:'seren',x:'Seren Valewind. If you’ve come to help, help. If you’ve come to gawk, gawk from over there.'}
+ ],
+ post:[
+  {w:'seren',x:'The nests are safe. Gale, you idiot, come here. You’re bleeding.'},
+  {w:'narr',x:'Her gryphon nuzzles her shoulder, then looks at Rowan with one gold eye, as if weighing him.'},
+  {w:'rowan',x:'She’s beautiful. Who does she belong to?'},
+  {w:'seren',x:'Nobody. Nobody owns a gryphon. She chose me. She could leave tomorrow, and I couldn’t stop her.'},
+  {w:'rowan',x:'That sounds frightening.'},
+  {w:'seren',x:'It’s the only thing in my life that isn’t. My mother wants me on the Skyreach throne. Gale just wants me.'},
+  {w:'rowan',x:'Come with us, if you like. You don’t have to.'},
+  {w:'seren',x:'I know. Gale likes you. She’s usually right. Don’t make her wrong.'}
+ ],
+ joins:[],
+ reward:{gold:440,items:[]},
+ after:'camp',optional:false,requires:null
+});
+
+/* ---------- 19 ---------- */
+MISSIONS.push({
+ id:'m19',num:'19',name:"The Council of Stone",act:2,style:'plains',
+ brief:"The Council of Stone, where the peoples swore the first oath. Three envoys wait in the circle to hear the heir, and the Regent knows it.",
+ obj:"Rout the ambush. All three envoys must survive.",
+ map:[
+  'FFFFF....HH......FFFFF',
+  'FFF.......H........FFF',
+  'FF.....o.....o......FF',
+  'F.........RRR........F',
+  '....o....RRTRR....o...',
+  '=========RRRRR========',
+  '....o....RRRRR....o...',
+  'F.........RRR........F',
+  'FF.....o.....o......FF',
+  'FFF........H.......FFF',
+  'FFFF......HH......FFFF',
+  'FFFFFF..........FFFFFF',
+  'FFFFFFFF......FFFFFFFF'
+ ],
+ deploy:[[4,10],[4,12],[6,9],[6,13],[3,10],[3,12],[7,10],[7,12]],
+ forced:["rowan"],
+ guests:[
+  {cls:'civ',lv:8,name:'Envoy Ivra',r:4,c:11,side:'B',tag:'ivra'},
+  {cls:'civ',lv:8,name:'Thane Hode',r:5,c:11,side:'B',tag:'hode'},
+  {cls:'civ',lv:8,name:'Wingwarden Pell',r:6,c:11,side:'B',tag:'pell'}
+ ],
+ enemies:[
+  ['regentcap',12,0,6,{pal:'R',ai:'aggr',name:'Regent Captain',gold:250}],
+  ['soldier',11,2,2,{pal:'R',ai:'aggr'}],
+  ['soldier',11,3,1,{pal:'R',ai:'aggr'}],
+  ['soldier',11,9,19,{pal:'R',ai:'aggr'}],
+  ['soldier',11,10,17,{pal:'R',ai:'aggr'}],
+  ['pikeman',11,2,19,{pal:'R',ai:'aggr'}],
+  ['pikeman',11,11,4,{pal:'R',ai:'aggr'}],
+  ['xbowman',11,0,13,{pal:'R',ai:'guard'}],
+  ['xbowman',11,12,8,{pal:'R',ai:'guard'}],
+  ['warpriest',11,1,5,{pal:'R',ai:'guard'}],
+  ['blackrider',11,4,0,{pal:'R',ai:'aggr'}],
+  ['blackrider',11,6,0,{pal:'R',ai:'aggr'}]
+ ],
+ chests:[
+  {r:2,c:8,kind:'hidden',loot:{item:'ironring'}},
+  {r:8,c:12,kind:'hidden',loot:{item:'elixir'}}
+ ],
+ win:{type:'rout'},
+ lose:{protect:['ivra','hode','pell']},
+ events:[
+  {when:{start:1},scene:[
+   {w:'lyra',x:'Riders on the west road. Regent’s colours. They knew we’d be here.'},
+   {w:'maelis',x:'Keep the envoys alive. If one falls, the council falls with them.'}
+  ]},
+  {when:{turn:3},scene:[
+   {w:'narr',x:'More riders, from the east road this time.'},
+   {w:'kael',x:'The Regent’s men knew exactly when and where. Someone at this council talked.'},
+   {w:'rowan',x:'Not now, Kael.'},
+   {w:'kael',x:'Yes, now. You’ll want to know later, and later it’ll cost more.'}
+  ],spawn:[['blackrider',11,5,0,{pal:'R',ai:'aggr'}],['blackrider',11,5,21,{pal:'R',ai:'aggr'}]]},
+  {when:{dead:'ivra'},scene:[
+   {w:'ivra',x:'The Silverwood... will remember this...'}
+  ]},
+  {when:{dead:'hode'},scene:[
+   {w:'hode',x:'Deepforge... does not forget a debt...'}
+  ]},
+  {when:{dead:'pell'},scene:[
+   {w:'pell',x:'The gryphons... will not come...'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'The Council of Stone. Eight standing stones on a bare hill, where the peoples swore the first oath a thousand years ago.'},
+  {w:'narr',x:'Three envoys wait inside the circle: an elf of the Silverwood, a dwarf of Deepforge, a rider of Skyreach.'},
+  {w:'ivra',x:'The Silverwood will hear the heir.'},
+  {w:'hode',x:'Deepforge will hear him. We do not promise to like him.'},
+  {w:'pell',x:'Skyreach will hear him. The gryphons have not decided.'},
+  {w:'rowan',x:'I didn’t come to be heard. I came to ask.'}
+ ],
+ post:[
+  {w:'narr',x:'The envoys look at each other, then at Rowan, then at the sword on his hip.'},
+  {w:'hode',x:'Deepforge will follow Alder’s heir, by the old oath.'},
+  {w:'ivra',x:'The Silverwood will follow Alder’s heir. By the old oath.'},
+  {w:'pell',x:'Skyreach follows Alder’s heir.'},
+  {w:'rowan',x:'Not me. Alder’s heir.'},
+  {w:'ivra',x:'Is there a difference?'},
+  {w:'narr',x:'Rowan opens his mouth, and finds he does not have an answer. The envoys bow, coolly, and leave.'},
+  {w:'kael',x:'They’d have followed the sword if a horse had carried it in.'},
+  {w:'rowan',x:'I know.'},
+  {w:'kael',x:'Do you? You looked pleased for a moment. I saw it.'}
+ ],
+ joins:[],
+ reward:{gold:460,items:[]},
+ after:'camp',optional:false,requires:null
+});
+
+/* ---------- 20 ---------- */
+MISSIONS.push({
+ id:'m20',num:'20',name:"The Ashen Table",act:2,style:'plains',
+ brief:"Cinderhold, an old border fort full of refugees. General Morrow has brought the Regent's army to its gate.",
+ obj:"Hold the fort for 10 turns. Rowan must live.",
+ map:[
+  'MMMMMMMMMMMMMM########',
+  'MMMMMHH.......#RRRRRR#',
+  'MMH..........##RRTRRR#',
+  'MH...h..h....#RRRRRRR#',
+  'H.........h..#RRRRRRR#',
+  '..h..........#RRRRRRR#',
+  '======.=.=====GRRRRRR#',
+  '..h.....h....#RRRRRRR#',
+  'H.........h..#RRRRRRR#',
+  'MH...h.......#RRRRRRR#',
+  'MMH..........##RRRRRR#',
+  'MMMMMHH.......#RRRRRR#',
+  'MMMMMMMMMMMMMM########'
+ ],
+ deploy:[[6,15],[6,16],[5,15],[7,15],[5,16],[7,16],[3,16],[9,16]],
+ forced:["rowan"],
+ guests:[
+  {cls:'civ',lv:3,name:'Refugee',r:3,c:5,side:'B',tag:'civ'},
+  {cls:'civ',lv:3,name:'Refugee',r:5,c:2,side:'B',tag:'civ'},
+  {cls:'civ',lv:3,name:'Refugee',r:7,c:2,side:'B',tag:'civ'}
+ ],
+ enemies:[
+  ['regentcap',14,6,0,{pal:'R',ai:'stay',boss:1,name:'General Morrow',tag:'morrow',gold:400,plan:'regentgeneral'}],
+  ['blackrider',12,4,1,{pal:'R',ai:'aggr',name:'Captain Sable',tag:'sable'}],
+  ['blackrider',12,3,2,{pal:'R',ai:'aggr'}],
+  ['blackrider',12,5,1,{pal:'R',ai:'aggr'}],
+  ['blackrider',12,8,1,{pal:'R',ai:'aggr'}],
+  ['soldier',12,6,3,{pal:'R',ai:'aggr'}],
+  ['soldier',12,5,4,{pal:'R',ai:'aggr'}],
+  ['soldier',12,7,4,{pal:'R',ai:'aggr'}],
+  ['soldier',12,6,6,{pal:'R',ai:'aggr'}],
+  ['pikeman',12,4,4,{pal:'R',ai:'aggr'}],
+  ['pikeman',12,8,4,{pal:'R',ai:'aggr'}],
+  ['xbowman',12,2,3,{pal:'R',ai:'guard'}],
+  ['xbowman',12,10,3,{pal:'R',ai:'guard'}],
+  ['warpriest',12,3,1,{pal:'R',ai:'guard'}],
+  ['warpriest',12,9,1,{pal:'R',ai:'guard'}]
+ ],
+ chests:[
+  {r:9,c:20,kind:'iron',loot:{item:'seal'}},
+  {r:3,c:6,kind:'wood',loot:{gold:300}}
+ ],
+ win:{type:'survive',turns:10},
+ events:[
+  {when:{start:1},scene:[
+   {w:'morrow',x:'Lord Regent Voss offers mercy. Hand over the impostor and the sword, and the rest of you may go home.'},
+   {w:'rowan',x:'We’ve heard about the Regent’s mercy. Fallowmere heard about it too.'},
+   {w:'brom',x:'Hold the gate, and keep them off the throne room. Ten turns and they’ll run out of daylight.'}
+  ]},
+  {when:{turn:3},scene:[
+  ],spawn:[['soldier',12,5,0,{pal:'R',ai:'aggr'}],['soldier',12,7,0,{pal:'R',ai:'aggr'}]]},
+  {when:{turn:5},scene:[
+   {w:'morrow',x:'Captain Sable. The refugees in the lower town are sheltering rebels. Ride them down.'},
+   {w:'narr',x:'Black riders wheel toward the lower town. At their head, Captain Sable stops her horse.'},
+   {w:'sable',x:'Those are farmers, General. I see children.'},
+   {w:'morrow',x:'I see an order. Ride.'},
+   {w:'narr',x:'Sable breaks her lance across her saddle. She rides alone to Cinderhold’s gate and drops the pieces in the mud.'},
+   {w:'sable',x:'I burned Fallowmere. I killed the knight at the gate. I’ll not ride over children. Do what you like with me.'},
+   {w:'kael',x:'She killed my father. Rowan. She killed our father.'},
+   {w:'narr',x:'What will Rowan do?',choice:[{t:'Take her oath',set:'sableoath'},{t:'Send her away',set:'sablegone'}]}
+  ]},
+  {when:{turn:6},scene:[
+   {w:'sable',x:'Then I am yours. Give me a horse and point me at Morrow’s riders.',if:'sableoath'},
+   {w:'rowan',x:'Not mine. Yours. You’ll fight because you choose to, or not at all.',if:'sableoath'},
+   {w:'sable',x:'Then I’ll go. If we meet again, I hope I’m on your side of the field.',if:'sablegone'},
+   {w:'kael',x:'Thank you, brother.',if:'sablegone'}
+  ],spawn:[['pikeman',12,5,0,{pal:'R',ai:'aggr'}],['xbowman',12,7,0,{pal:'R',ai:'guard'}]]},
+  {when:{turn:8},scene:[
+  ],spawn:[['soldier',12,5,0,{pal:'R',ai:'aggr'}],['soldier',12,7,0,{pal:'R',ai:'aggr'}],['pikeman',12,4,0,{pal:'R',ai:'aggr'}]]},
+  {when:{dead:'morrow'},scene:[
+   {w:'morrow',x:'The Regent... has more armies... than you have friends...'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'Cinderhold. An old border fort, empty for twenty years. Refugees from the burned villages shelter in the lower town.'},
+  {w:'brom',x:'Good walls. Bad roof. One gate, and a fine one. I could live here.'},
+  {w:'narr',x:'In the keep stands a great round table of black oak, scorched at the edges.'},
+  {w:'maelis',x:'The Ashen Table. Alder’s grandfather built it, and nobody has sat at it since the Crown broke.'},
+  {w:'narr',x:'A rider on the hill. Then a hundred more. The Regent’s army, and General Morrow at its head.'}
+ ],
+ post:[
+  {w:'narr',x:'Morrow’s army pulls back into the dusk. The refugees come up from the lower town, carrying lamps.'},
+  {w:'narr',x:'In the keep, the company gathers around the Ashen Table. Every seat is the same.'},
+  {w:'rowan',x:'There’s no head of this table. That’s why I like it. Anyone who sits here can get up and leave.'},
+  {w:'brom',x:'A table you can leave. Strange sort of oath.'},
+  {w:'rowan',x:'It’s the only kind I’ll take. Kael. Will you be First Knight?'},
+  {w:'kael',x:'You’re asking? You could order it now, you know. You’d have the right.'},
+  {w:'rowan',x:'I’m asking.'},
+  {w:'kael',x:'Then yes. Someone has to make sure you don’t believe your own songs.'},
+  {w:'kael',x:'Though I see you’ve let our father’s killer sit at it. I’ll be First Knight. I won’t be her friend.',if:'sableoath'},
+  {w:'narr',x:'Maris kneels and touches the flat of the Oathblade to Rowan’s shoulder. Sir Rowan, Knight of the Ashen Table.'},
+  {w:'elowen',x:'Edric would have wept. Then pretended it was the smoke.'}
+ ],
+ joins:[],
+ reward:{gold:500,items:[]},
+ after:'camp',optional:false,requires:null
+});
+
+/* ---------- 21 ---------- */
+MISSIONS.push({
+ id:'m21',num:'21',name:"Black Wings",act:2,style:'plains',
+ brief:"Midnight on Cinderhold's walls. Something huge is blotting out the stars.",
+ obj:"Survive 6 turns. Rowan must live.",
+ map:[
+  'VVVVVVVVVVVVVVVVVVVVVV',
+  'VVVVVVVVVVVVVVVVVVVVVV',
+  '##A##RRRRRRRRRR##A####',
+  '#RRRRRRRRRRRRRRRRRRRR#',
+  '#RR#............#RRRR#',
+  '#RR#..h......h..#RRRR#',
+  '#RRG............GRRRR#',
+  '#RR#....h..h....#RRRR#',
+  '#RR#............#RRRR#',
+  '#RRRRRRRRRRRRRRRRRRRR#',
+  '##A###RRRRRRRR####A###',
+  'VVVVVVVVVVVVVVVVVVVVVV',
+  'VVVVVVVVVVVVVVVVVVVVVV'
+ ],
+ deploy:[[6,8],[6,9],[6,10],[6,11],[6,12],[6,13],[5,9],[7,10]],
+ forced:["rowan"],
+ guests:[],
+ enemies:[
+  ['gryphonrider',16,0,10,{pal:'R',ai:'aggr',boss:1,name:'Skarn',tag:'skarn',plan:'wyrm'}],
+  ['gryphonrider',12,1,3,{pal:'R',ai:'aggr',plan:'wyvern'}],
+  ['gryphonrider',12,1,18,{pal:'R',ai:'aggr',plan:'wyvern'}],
+  ['gryphonrider',12,11,5,{pal:'R',ai:'aggr',plan:'wyvern'}],
+  ['gryphonrider',12,11,16,{pal:'R',ai:'aggr',plan:'wyvern'}]
+ ],
+ chests:[
+  {r:3,c:1,kind:'wood',loot:{item:'elixir'}},
+  {r:5,c:6,kind:'wood',loot:{item:'tonic'}}
+ ],
+ win:{type:'survive',turns:6},
+ events:[
+  {when:{start:1},scene:[
+   {w:'maelis',x:'Watch the stones glow. Where they glow, his fire falls next turn. Man the ballistae, and do not cluster.'},
+   {w:'skarn',x:'Little king. They tell me to burn you. I do not want to. I will anyway.'}
+  ]},
+  {when:{turn:3},scene:[
+   {w:'skarn',x:'Kill me, then. Please. It is the only way the chains come off.'},
+   {w:'rowan',x:'There has to be another way.'},
+   {w:'skarn',x:'There was. A thousand years ago. Your kings used it up.'}
+  ],spawn:[['gryphonrider',12,0,0,{pal:'R',ai:'aggr',plan:'wyvern'}],['gryphonrider',12,12,21,{pal:'R',ai:'aggr',plan:'wyvern'}]]},
+  {when:{turn:6},scene:[
+   {w:'narr',x:'Skarn tears free of the battlements and climbs into the dark, roaring, his chains trailing fire.'}
+  ]}
+ ],
+ pre:[
+  {w:'narr',x:'Midnight. The watch on Cinderhold’s walls hears it before anyone sees it: wings, huge and slow.'},
+  {w:'lyra',x:'Something’s blotting out the stars. Something big.'},
+  {w:'maelis',x:'Skarn. The Black Wyrm. Look at his neck. Bone chains. Someone has him leashed.'},
+  {w:'seren',x:'Gale won’t go near it. She’s shaking.'},
+  {w:'brom',x:'The old ballistae on the walls. If they still fire, a bolt in his wing might send him home.'}
+ ],
+ post:[
+  {w:'narr',x:'Dawn. Half the walls are black. Nobody died. Nobody understands how.'},
+  {w:'rowan',x:'He begged us to kill him. Who chains a dragon?'},
+  {w:'maelis',x:'The same hand that chained the dead. I must tell you something, all of you.'},
+  {w:'maelis',x:'The Ember Crown was not lost when Alder fell. It broke into five shards, and they are scattered across Aldmere.'},
+  {w:'maelis',x:'Gather them, and the Crown can be forged again. Wear it, and every people answers you.'},
+  {w:'kael',x:'And the price? There’s always a price.'},
+  {w:'maelis',x:'The Crown is heavy. That is all you need to know tonight.'},
+  {w:'narr',x:'Elowen watches Maris walk away, and remembers a line in a letter that Maris did not read aloud.'}
+ ],
+ joins:[],
+ reward:{gold:520,items:[]},
+ after:'camp',optional:false,requires:null
+});
+
 /* ================= STORY TEXT (generated from story/act1_script.txt by tools/apply_script.py; edit the .txt) ================= */
 Object.assign(SPK,{queen:{n:'A cold voice',cls:'wraith',side:'R',pal:'hollow',look:{}}});
 const PROLOGUE=[
@@ -4598,6 +5706,7 @@ const ACT_END=[
  {w:'queen',x:'There you are, little ember. Come home. Nobody leaves me.'},
  {w:'narr',x:'End of Act I. The journey continues in Act II: The Sword.'}
 ];
+const ACT_OPEN={},ACT_ENDS={1:ACT_END};  // later acts add theirs (63_story_text_act2.js, ...)
 // camp conversations: open at the campfire after mission `after` is won, when everyone in `who` is in the company
 const CAMPTALK=[
  {id:'second_son',after:'m1',title:'The Second Son',who:['kael', 'rowan'],lines:[
@@ -4754,6 +5863,196 @@ const BANTER=[
   {w:'gorm',x:'Gorm is holding it very quiet.'}
  ]},
 ];
+
+/* ================= ACT 2 STORY TEXT (generated from story/act2_script.txt by tools/apply_script.py --act 2; edit the .txt) ================= */
+ACT_OPEN[2]=[
+ {w:'narr',x:'Act II: The Sword.'},
+ {w:'narr',x:'Word travels faster than horses. By the first thaw, every inn on the Highcrest road has heard of a stable boy with a king’s sword.'},
+ {w:'narr',x:'Lord Regent Voss has heard too. He does not send soldiers. Soldiers can be seen coming.'},
+ {w:'narr',x:'He sends money north, to the people who are paid never to be seen at all.'}
+];
+ACT_ENDS[2]=[
+ {w:'narr',x:'Cinderhold’s walls are black with dragonfire. The Ashen Table stands in the yard, round, scorched, unbroken.'},
+ {w:'narr',x:'Every people of Aldmere has sent someone to sit at it. Not one of them came for Rowan. They came for Alder’s son.'},
+ {w:'narr',x:'Rowan has begun to notice the difference. He has not yet decided whether it matters.'},
+ {w:'narr',x:'Far to the south, in the palace at Highcrest, the Regent burns a letter and says one word to the dark: Crows.'},
+ {w:'narr',x:'End of Act II. The journey continues in Act III: The Fellowship.'}
+];
+CAMPTALK.push(
+ {id:'contract',after:'m11',title:'The Contract',who:['kuro', 'rowan'],lines:[
+  {w:'kuro',x:'You should have killed me. Everyone knows that. Why are you the only one who does not?'},
+  {w:'rowan',x:'You stopped your blade too. On the second pass. I saw it.'},
+  {w:'kuro',x:'I was tired.'},
+  {w:'rowan',x:'So was I. That’s two of us tired. We’ll call it a draw.'},
+  {w:'kuro',x:'A contract is not a draw. It is paid or it is broken.'},
+  {w:'rowan',x:'Then I suppose I broke yours. Sorry.'},
+  {w:'kuro',x:'You apologise to the woman who tried to kill you. Mother would have you for breakfast.'}
+ ]},
+ {id:'reckless',after:'m11',title:'Reckless',who:['kael', 'rowan'],lines:[
+  {w:'kael',x:'Sparing her was soft, brother. She’ll go back to her clan with everything she’s seen.'},
+  {w:'rowan',x:'She hasn’t gone yet.'},
+  {w:'kael',x:'Because she’s counting our watches. Every assassin we let live is one we fight twice.'},
+  {w:'rowan',x:'You might be right.'},
+  {w:'kael',x:'I am right. You just don’t care, because when you’re merciful everyone loves you for it.'},
+  {w:'rowan',x:'And when you’re right, nobody does.'},
+  {w:'kael',x:'Ha. Yes. That’s the trade, isn’t it? I’ll take the first watch.'}
+ ]},
+ {id:'watcher',after:'m12',title:'The Watcher',who:['lyra', 'rowan'],lines:[
+  {w:'lyra',x:'You talk to your horse more than to your army. Why?'},
+  {w:'rowan',x:'Horses don’t salute.'},
+  {w:'lyra',x:'You don’t like being saluted?'},
+  {w:'rowan',x:'Every time someone salutes, I feel like I owe them something.'},
+  {w:'lyra',x:'Strange. Kings usually feel the opposite. I’ll write that down.'},
+  {w:'rowan',x:'You’re keeping notes on me?'},
+  {w:'lyra',x:'Very short notes. So far: stubborn, kind to horses, has not burned anything. Yet.'}
+ ]},
+ {id:'knelt',after:'m13',title:'Knelt',who:['oakheart', 'maelis'],lines:[
+  {w:'oakheart',x:'Greywarden. You have aged. Three hundred years ago you were taller.'},
+  {w:'maelis',x:'Three hundred years ago I was not carrying a kingdom.'},
+  {w:'oakheart',x:'You carried your sister to the north. I watched. You did not look back.'},
+  {w:'maelis',x:'I could not afford to.'},
+  {w:'oakheart',x:'And the boy. What are you carrying him toward?'},
+  {w:'maelis',x:'Toward the Crown.'},
+  {w:'oakheart',x:'Hm. I said the same of a tree once. We cut it down to make a throne.'}
+ ]},
+ {id:'the_hold',after:'m14',title:'What Is Owed',who:['brom', 'gorm'],lines:[
+  {w:'brom',x:'You. The big one. Gorm, is it? They say you were chained to a millstone.'},
+  {w:'gorm',x:'Gorm was. Rowan broke it.'},
+  {w:'brom',x:'My father chained me to a hold. Not with iron. With his last breath. Get back what was ours.'},
+  {w:'gorm',x:'Is it heavy?'},
+  {w:'brom',x:'Every day.'},
+  {w:'gorm',x:'Gorm’s chain was heavy too. Then it was gone, and Gorm’s hands did not know what to do.'},
+  {w:'brom',x:'That’s what scares me, lad. If I ever pay it off, what’s left of me?'}
+ ]},
+ {id:'forty_pages',after:'m15',title:'Forty Pages',who:['fizzwick', 'nim'],lines:[
+  {w:'fizzwick',x:'Please give me back my contract.'},
+  {w:'nim',x:'Why? It says you work for a mine for nineteen years, for soup.'},
+  {w:'fizzwick',x:'Fourteen if I’m good! And the soup is very nourishing.'},
+  {w:'nim',x:'I’ve read it. Page thirty-one says you can’t swear loyalty to anyone. Page thirty-two says you can’t leave.'},
+  {w:'fizzwick',x:'Yes, well, I didn’t read that far. Nobody reads that far!'},
+  {w:'nim',x:'So I’ll keep it. In my pack. Where they can’t make you read it.'},
+  {w:'fizzwick',x:'That’s... actually rather kind. Is it kind? I can’t tell with thieves.'}
+ ]},
+ {id:'robbed',after:'m16',title:'Then You Were Robbed',who:['nim', 'kuro'],lines:[
+  {w:'nim',x:'Fifty silver. That’s what she paid?'},
+  {w:'kuro',x:'Fifty. The farmer wanted a hundred. She haggled.'},
+  {w:'nim',x:'The orphanage sold me for a dinner. A good one, apparently. The matron talked about the pie for weeks.'},
+  {w:'kuro',x:'Then we are both bargains.'},
+  {w:'nim',x:'Or we’re both stolen goods, and nobody ever paid the real owner.'},
+  {w:'kuro',x:'Who is the real owner?'},
+  {w:'nim',x:'Me, I think. I’m still working it out. Nearby is easier.'}
+ ]},
+ {id:'two_clans',after:'m17',title:'Heron and Crow',who:['jin', 'kuro'],lines:[
+  {w:'jin',x:'You sleep with your back to the wall.'},
+  {w:'kuro',x:'You sleep with your hand on your sword.'},
+  {w:'jin',x:'My lord died in his sleep. A Crow knife. Before you were born, I think.'},
+  {w:'kuro',x:'Before I was bought, certainly. It was not mine.'},
+  {w:'jin',x:'I know. I would have smelled it on you.'},
+  {w:'kuro',x:'You will not let it go.'},
+  {w:'jin',x:'A dead man holds my leash. I do not know how to put it down. Do you?'},
+  {w:'kuro',x:'No. I was hoping you would show me.'}
+ ]},
+ {id:'the_leash',after:'m17',title:'The Leash',who:['kael', 'jin'],lines:[
+  {w:'kael',x:'Jin. Your lord’s dead and you still keep his oath. Doesn’t it chafe?'},
+  {w:'jin',x:'Every day. Like a ring that no longer fits.'},
+  {w:'kael',x:'My father made me swear to guard Rowan. Then he died. I can’t ask him what he meant.'},
+  {w:'jin',x:'Then you must decide what he meant. That is harder.'},
+  {w:'kael',x:'Easier to just obey.'},
+  {w:'jin',x:'Easier. Not lighter.'}
+ ]},
+ {id:'nobody_owns',after:'m18',title:'Nobody Owns Her',who:['seren', 'rowan'],lines:[
+  {w:'seren',x:'Gale doesn’t like many people. She landed beside you twice today.'},
+  {w:'rowan',x:'Maybe she likes the smell of horses.'},
+  {w:'seren',x:'Maybe. My mother has three suitors for me lined up. Gale bit two of them.'},
+  {w:'rowan',x:'And the third?'},
+  {w:'seren',x:'Hasn’t been near enough yet. She’s very patient.'},
+  {w:'rowan',x:'Should I be worried?'},
+  {w:'seren',x:'You should be worried she bites you. Not that she might stay.'}
+ ]},
+ {id:'a_name',after:'m19',title:'A Name',who:['kael', 'rowan'],lines:[
+  {w:'kael',x:'The dwarves followed the name. So did the elves. You noticed.'},
+  {w:'rowan',x:'I noticed.'},
+  {w:'kael',x:'And for a moment you liked it. Admit it.'},
+  {w:'rowan',x:'For a moment. It’s easier than asking. People just say yes.'},
+  {w:'kael',x:'That’s how it starts, brother. Father always said a crown makes everyone agree with you.'},
+  {w:'rowan',x:'Edric said that?'},
+  {w:'kael',x:'Not to you. To me. He said it was why I must always tell you no. I’m only just starting to understand him.'}
+ ]},
+ {id:'the_gate',after:'m20',title:'The Gate',who:['sable', 'rowan'],lines:[
+  {w:'sable',x:'You want to know how he died. Your knight. Edric.'},
+  {w:'rowan',x:'Only if you want to tell me.'},
+  {w:'sable',x:'He held the gate alone. Twelve of us. He killed four before I reached him.'},
+  {w:'sable',x:'He didn’t beg. He didn’t curse. He just kept looking past me, toward the road you took.'},
+  {w:'rowan',x:'Tell Kael. Not today. But tell him.'},
+  {w:'sable',x:'He’ll hate me more.'},
+  {w:'rowan',x:'Probably. He deserves to hear it from someone who was there.'}
+ ]},
+ {id:'forgiven',after:'m20',title:'Forgiven',who:['kael', 'rowan'],lines:[
+  {w:'kael',x:'You let her sit at our table. The woman who killed our father.',if:'sableoath'},
+  {w:'rowan',x:'She laid down her lance for strangers. I’m not forgiving what she did. I’m making room for what she does next.',if:'sableoath'},
+  {w:'kael',x:'Pretty words. Did they come with the sword?',if:'sableoath'},
+  {w:'kael',x:'You sent her away. I thought you’d keep her. You keep everyone.',if:'sablegone'},
+  {w:'rowan',x:'You asked me to. That was enough.',if:'sablegone'},
+  {w:'kael',x:'Was it? Or did it just look good in front of the others?',if:'sablegone'},
+  {w:'rowan',x:'I don’t know, Kael. I’m finding out I don’t know a lot of things.'},
+  {w:'kael',x:'Good. Keep finding out. I’ll tell you when to stop.'}
+ ]},
+ {id:'under_orders',after:'m21',title:'Under Orders',who:['sable', 'gorm'],lines:[
+  {w:'sable',x:'You were chained to a millstone, they say. Gorm.'},
+  {w:'gorm',x:'Gorm was. Gorm went where the chain went.'},
+  {w:'sable',x:'I went where the orders went. Twenty years. I never once wanted to stop.'},
+  {w:'gorm',x:'Gorm did not pick the chain. Sable picked the orders.'},
+  {w:'sable',x:'Every day. That’s worse, isn’t it?'},
+  {w:'gorm',x:'Worse, or better. Gorm does not know. But Sable stopped. Gorm saw.'}
+ ]},
+ {id:'five_shards',after:'m21',title:'The Heavy Crown',who:['elowen', 'maelis'],lines:[
+  {w:'elowen',x:'The Crown is heavy. That was all you said, Maris. You stopped there, like you stopped at Edric’s letter.'},
+  {w:'maelis',x:'Some things are better known late.'},
+  {w:'elowen',x:'For whom?'},
+  {w:'maelis',x:'For the boy. For you. For the realm.'},
+  {w:'elowen',x:'My order turns no one away. Even liars. But I’m watching you now, the way Lyra watches him.'},
+  {w:'maelis',x:'Good. Someone should.'}
+ ]}
+);
+BANTER.push(
+ {after:'m11',lines:[
+  {w:'nim',x:'Kuro hasn’t run off yet.'},
+  {w:'gorm',x:'Nobody is holding her. That is why she stays.'},
+  {w:'nim',x:'That makes no sense.'},
+  {w:'gorm',x:'It made sense for Gorm.'}
+ ]},
+ {after:'m14',lines:[
+  {w:'lyra',x:'Does he always sing while he walks?'},
+  {w:'brom',x:'That’s not singing. That’s Gorm humming.'},
+  {w:'gorm',x:'Gorm is not humming. Gorm is thinking loudly.'}
+ ]},
+ {after:'m15',lines:[
+  {w:'fizzwick',x:'I’ve made a bomb that smells of roses!'},
+  {w:'nim',x:'Why?'},
+  {w:'fizzwick',x:'So the last thing they smell is pleasant! I’m not a monster.'}
+ ]},
+ {after:'m15',lines:[
+  {w:'brom',x:'I’ll sing the Lament of Ironvault. All ninety verses.'},
+  {w:'kael',x:'I’ll take the far watch.'},
+  {w:'oakheart',x:'I have heard it. In the year it was written. It was long then too.'}
+ ]},
+ {after:'m17',lines:[
+  {w:'jin',x:'Your Gorm carried four sailors at once.'},
+  {w:'gorm',x:'Five. One was small.'},
+  {w:'jin',x:'Hm. In my homeland, you would be a mountain spirit.'},
+  {w:'gorm',x:'Gorm would like that. Mountains do not have to talk.'}
+ ]},
+ {after:'m18',lines:[
+  {w:'seren',x:'Gale wants to know if your horse can fly.'},
+  {w:'rowan',x:'Thistle can barely trot uphill.'},
+  {w:'seren',x:'She says that’s very sad, and she’s sorry for you both.'}
+ ]},
+ {after:'m20',lines:[
+  {w:'fizzwick',x:'The round table is lovely. I’ve added a little drawer for biscuits.'},
+  {w:'brom',x:'You put a drawer in the Ashen Table?'},
+  {w:'fizzwick',x:'It’s a very historic drawer now.'}
+ ]}
+);
 
 /* ================= BATTLE LAYOUT (v6): command rail + settings drawer ================= */
 (function(){
