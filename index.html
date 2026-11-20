@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="05dff24acb";window.EC_BUILT="Nov 20, 2:33 pm";
+window.EC_VERSION="98f0dbd384";window.EC_BUILT="Nov 20, 2:43 pm";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -218,6 +218,8 @@ html.rot body{position:fixed;top:0;left:0;width:var(--rw);height:var(--rh);trans
  padding-left:max(12px,env(safe-area-inset-top,0px));padding-right:max(10px,calc(env(safe-area-inset-bottom,0px) - 14px))}   /* home bar: keep ~20px clear, not the full 34 */
 html.rot .ov{padding:10px max(14px,env(safe-area-inset-bottom,0px)) 10px max(14px,env(safe-area-inset-top,0px))}
 html.rot #town,html.rot #wmap{padding:0}
+/* full-screen web app (2026-11-20): keep the world map and town paintings clear of the status bar on the game's left */
+html.rot #tcv,html.rot #wcv{left:env(safe-area-inset-top,0px);right:0;width:auto}
 html.rot .ttop{padding-top:10px;padding-left:max(14px,env(safe-area-inset-top,0px));padding-right:max(14px,env(safe-area-inset-bottom,0px))}
 html.rot .tbar{padding-bottom:10px;padding-left:max(14px,env(safe-area-inset-top,0px));padding-right:max(14px,env(safe-area-inset-bottom,0px))}
 html.rot .dskip{top:10px;right:max(14px,env(safe-area-inset-bottom,0px))}
