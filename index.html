@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="13459cdcbc";
+window.EC_VERSION="d8711d251c";window.EC_BUILT="Nov 20, 2:05 pm";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -20,7 +20,16 @@ if(v&&v!==window.EC_VERSION&&!shown){shown=true;var b=document.createElement("di
 b.style.cssText="position:fixed;left:50%;top:max(10px,env(safe-area-inset-top));transform:translateX(-50%);z-index:99999;background:#dcb25a;color:#0e1512;font:700 15px Alegreya Sans,system-ui,sans-serif;padding:10px 18px;border-radius:10px;box-shadow:0 4px 16px #0008";
 b.onclick=function(){location.reload()};document.body.appendChild(b)}}).catch(function(){})}
 ["load","pageshow"].forEach(function(ev){addEventListener(ev,function(){setTimeout(function(){dispatchEvent(new Event("resize"))},300)})});
-document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")check()});addEventListener("focus",check)})();
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")check()});addEventListener("focus",check);
+addEventListener("load",function(){setTimeout(check,4000)});
+/* version label on the title screen and in Settings (with screen numbers, to check the layout on the phone) */
+function lbl(){var t="Version "+window.EC_VERSION+" · "+window.EC_BUILT;
+var sc=document.querySelector("#screen.titlebg .sc");if(sc&&!sc.querySelector(".ecver")){var d=document.createElement("div");d.className="ecver";d.textContent=t;d.style.cssText="margin-top:10px;font-size:12px;opacity:.6;text-align:center";sc.appendChild(d)}
+var db=document.querySelector("#setp .dbody");if(db&&!db.querySelector(".ecver")){var e=document.createElement("div");e.className="ecver";e.style.cssText="margin-top:6px;font-size:12px;opacity:.6;line-height:1.4";
+var pr=document.createElement("div");pr.style.cssText="position:fixed;left:0;top:0;width:100vw;height:100vh;visibility:hidden";document.documentElement.appendChild(pr);
+e.textContent=t+" · screen "+screen.width+"×"+screen.height+", view "+innerWidth+"×"+innerHeight+" / "+pr.offsetWidth+"×"+pr.offsetHeight+(navigator.standalone?", home-screen app":"");pr.remove();db.appendChild(e)}}
+new MutationObserver(lbl).observe(document.documentElement,{childList:true,subtree:true});
+})();
 </script>
 </head>
 <!--pwa-end--><title>The Ember Crown</title>
@@ -206,7 +215,7 @@ button:focus-visible{outline:2px solid var(--gold-2);outline-offset:2px}
 #rotate{display:none!important}
 html.rot,html.rot body{overflow:hidden}
 html.rot body{position:fixed;top:0;left:0;width:var(--rw);height:var(--rh);transform-origin:0 0;transform:rotate(90deg) translateY(-100%);
- padding-left:max(12px,env(safe-area-inset-top,0px));padding-right:max(12px,env(safe-area-inset-bottom,0px))}
+ padding-left:max(12px,env(safe-area-inset-top,0px));padding-right:max(10px,calc(env(safe-area-inset-bottom,0px) - 14px))}   /* home bar: keep ~20px clear, not the full 34 */
 html.rot .ov{padding:10px max(14px,env(safe-area-inset-bottom,0px)) 10px max(14px,env(safe-area-inset-top,0px))}
 html.rot #town,html.rot #wmap{padding:0}
 html.rot .ttop{padding-top:10px;padding-left:max(14px,env(safe-area-inset-top,0px));padding-right:max(14px,env(safe-area-inset-bottom,0px))}
@@ -376,7 +385,11 @@ html.rot #skbox,#skbox.sm{font-size:12px;padding:6px 10px}
   for(const r of rs)if(r.media&&r.type===4)media.push({r,t:r.media.mediaText});}}
  const swap=t=>t.replace(/width/g,'\u0001').replace(/height/g,'width').replace(/\u0001/g,'height')
   .replace(/portrait/g,'\u0002').replace(/landscape/g,'portrait').replace(/\u0002/g,'landscape');
- function upd(){const w=innerWidth,h=innerHeight,r=h>w&&w<=820&&(!mq||mq.matches||'ontouchstart' in window);
+ // 2026-11-20: the iPhone home-screen app can report innerHeight a status bar short at launch, which left an
+ // empty band at the bottom; measure the real fixed-position box too and use the larger.
+ let probe=null;function real(){if(!document.body)return [innerWidth,innerHeight];if(!probe){probe=document.createElement('div');probe.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;visibility:hidden;pointer-events:none;z-index:-1';document.documentElement.appendChild(probe);}
+  return [Math.max(innerWidth,probe.offsetWidth),Math.max(innerHeight,probe.offsetHeight)];}
+ function upd(){const [w,h]=real(),r=h>w&&w<=820&&(!mq||mq.matches||'ontouchstart' in window);
   if(r){H.style.setProperty('--rw',h+'px');H.style.setProperty('--rh',w+'px');H.style.setProperty('--vh',w+'px');}
   else H.style.removeProperty('--vh');
   if(r!==on){if(!media.length)collect();for(const m of media){try{m.r.media.mediaText=r?swap(m.t):m.t;}catch(e){}}}
@@ -2189,6 +2202,13 @@ function hitWall(r,c,n){if(tile(r,c)!=='Z')return null;G.walls=G.walls||{};const
  return {hp:0,broke:true};}
 function resolveWallHit(a,r,c){const n=wallDmg(a),R=hitWall(r,c,n);if(!R)return null;
  return {n,hp:R.hp,broke:R.broke,msg:`${a.name} hits the cracked wall for ${n}`+(R.broke?' and it crumbles into rubble.':` (${R.hp} left).`)};}
+/* ---------- burning forest (R-078, T-013) ---------- */
+// Only in missions with lose.burn (m12). Fire damage on a unit standing in Forest turns that tile to Dead Wood
+// (a copied G.map, kept in a saved battle) and adds 1 to G.burnt. burnAt() is the hook for later fire (bombs).
+function burnsOn(){return !!(G&&G.m&&G.m.lose&&G.m.lose.burn);}
+function isFireHit(a){const w=W(a);return isMagicAtk(a)&&!!w&&w.el==='fire';}
+function burnAt(r,c){if(!burnsOn()||!inMap(r,c)||tile(r,c)!=='F')return false;
+ if(G.m&&G.map===G.m.map)G.map=G.map.slice();G.map[r]=G.map[r].slice(0,c)+'D'+G.map[r].slice(c+1);G.burnt=(G.burnt||0)+1;return true;}
 function healRange(u,sk){return sk==='mend'?[1,2]:[1,1];}
 function healTargets(u,r,c,sk){const [a,b]=healRange(u,sk);return alliesOf(u).filter(a2=>a2.hp<a2.s.hp&&(d=>d>=a&&d<=b)(dist(r,c,a2.r,a2.c)));}
 function healAmt(u,sk){const w=W(u);return (sk==='mend'?RULES.heal.mend:(w&&w.wt==='staff'?w.mt:RULES.heal.plain))+Math.floor(stat(u,'mag')/2);}
@@ -2252,6 +2272,7 @@ function forecast(a,ar,ac,d,o={}){
 function resolveStrike(a,d,o={}){
  const f=forecast(a,a.r,a.c,d,o),ev=[];
  for(let i=0;i<f.n;i++){d.hp-=f.per;ev.push({t:'hit',u:d,n:f.per,gap:f.n>1&&i<f.n-1});if(d.hp<=0||leaveCheck(d))break;}
+ if(isFireHit(a)&&burnAt(d.r,d.c))ev.push({t:'burn',r:d.r,c:d.c});   // R-078
  let m=`${a.name} hits ${d.name} for ${f.total}`+(f.n>1?` (×${f.n})`:'');
  if((has(a,'drain')||has(a,'dread'))&&!a.dead){const hl=Math.floor(f.total/2);const was=a.hp;a.hp=Math.min(a.s.hp,a.hp+hl);ev.push({t:'drain',u:a,n:hl,was});}
  gainXP(a,xpFor(a,d,false));
@@ -2262,6 +2283,7 @@ function resolveStrike(a,d,o={}){
   if(f.kb&&!f.kb.blocked){ev.push({t:'knock',u:d,r:f.kb.nr,c:f.kb.nc});d.r=f.kb.nr;d.c=f.kb.nc;m+=', knocking it back';}
   if(f.ctr&&!a.dead){d.countered=true;ev.push({t:'counter',a:d,d:a});
    for(let i=0;i<f.ctr.n;i++){a.hp-=f.ctr.per;ev.push({t:'hit',u:a,n:f.ctr.per,gap:f.ctr.n>1});if(a.hp<=0||leaveCheck(a))break;}
+   if(isFireHit(d)&&burnAt(a.r,a.c))ev.push({t:'burn',r:a.r,c:a.c});   // R-078 a fire counter
    gainXP(d,xpFor(d,a,false));m+=`, takes ${f.ctr.total} back`;
    if(leaveCheck(a)){const Lv=resolveLeave(a,d);m+='. '+Lv.m;ev.push(Lv);}
    else if(a.hp<=0){m+=' and falls.';ev.push({t:'kill',u:a,by:d,how:'hit'});}
@@ -2331,11 +2353,15 @@ async function strike(a,d,o={}){
   else if(e.t==='kill'){delete a.vhp;delete d.vhp;await kill(e.u,e.by,e.how);}
   else if(e.t==='poison'){ftext(e.u.x,e.u.y-62,'Poisoned','#c9a6ff');parts(e.u.x,e.u.y-24,8,['#a26be0','#c9a6ff'],{spd:50,life:500,size:2});}
   else if(e.t==='leave'){delete a.vhp;delete d.vhp;await leaveFx(e.u,e.m,false);}
+  else if(e.t==='burn')burnFx(e.r,e.c);
  }
  delete a.vhp;delete d.vhp;
  logm(R.msg,a.side==='R'?'R':'B');
  await wait(200);G.striking=false;
 }
+// R-078: a Forest tile catches fire and becomes Dead Wood (the rule already changed the map)
+function burnFx(r,c){const x=c*TS+24,y=r*TS+TS*.78;bakeTerrain();sfx('fire');parts(x,y-24,18,['#ffcf6a','#ff7a2e','#d9451f','#4a3a30'],{spd:90,grav:-30,life:700,size:2.8});
+ ftext(x,y-48,'Burning!','#ff9a5a',true);const L=G.m.lose.burn;logm(`The forest catches fire (${G.burnt} of ${L} burned).`,'N');if(G.burnt===L-1)toast('One more burned tree and the elves turn on you!');}
 // R-076: a boss leaves the field (the rule already set u.gone); show it, then check for the win
 async function leaveFx(u,m,log){ftext(u.x,u.y-62,u.leave?'Flees!':'Yields!','#ffd36b',true);ring(u.x,u.y,'#ff9a8a');parts(u.x,u.y-20,14,['#e9e4d8','#8f8778'],{spd:70,life:600,size:2.6});if(log)logm(m,'B');await wait(300);checkEnd();}
 // T-010: hitting a cracked wall (R-073). resolveWallHit() (40_battle.js) decides; this only plays it.
@@ -2453,7 +2479,7 @@ async function useSkill(u,k,t){
    else{FX.push({k:'boom',x:tx,y:ty+4,s:k==='meteor'?70:44,age:0,life:k==='meteor'?650:480});FX.push({k:'shock',x:tx,y:ty+14,s:k==='meteor'?90:50,age:0,life:600});for(let i=0;i<(k==='meteor'?10:6);i++)FX.push({k:'smoke',x:tx+(Math.random()-.5)*40,y:ty+(Math.random()-.5)*20,vx:(Math.random()-.5)*30,vy:-20-Math.random()*30,s:10+Math.random()*10,age:0,life:900+Math.random()*600});}
    for(const [r,c] of tiles)parts(c*TS+24,r*TS+26,8,d.el==='frost'?['#e8f6ff','#9fd3ff']:['#ffcf6a','#ff7a2e','#d9451f'],{spd:90,grav:-10,life:500});
    {let broke=false;for(const [r,c] of tiles){if(!inMap(r,c)||tile(r,c)!=='Z')continue;const n=wallAoe(u,k),R=hitWall(r,c,n);if(!R)continue;ftext(c*TS+24,r*TS+TS*.78-48,'−'+n,'#ffd9cf',true);if(R.broke){broke=true;logm('The cracked wall crumbles into rubble.','B');}}if(broke)bakeTerrain();}   // R-073: blasts hit cracked walls
-   for(const [r,c] of tiles){const v=unitAt(r,c);if(!v||v===u)continue;const dmg=aoeDamage(u,k,v);v.hp-=dmg;hitFx(v,dmg);if(d.el==='frost')v.frozen=2;if(d.el==='fire')v.burned=1;if(!friendly(v.side,u.side))gainXP(u,6);}
+   for(const [r,c] of tiles){const v=unitAt(r,c);if(!v||v===u)continue;const dmg=aoeDamage(u,k,v);v.hp-=dmg;hitFx(v,dmg);if(d.el==='frost')v.frozen=2;if(d.el==='fire'){v.burned=1;if(burnAt(r,c))burnFx(r,c);}if(!friendly(v.side,u.side))gainXP(u,6);}
    await wait(300);for(const [r,c] of tiles){const v=unitAt(r,c);if(v&&leaveCheck(v)){const Lv=resolveLeave(v,friendly(v.side,u.side)?null:u);await leaveFx(v,Lv.m,true);}else if(v&&v.hp<=0)await kill(v,friendly(v.side,u.side)?null:u,d.el==='fire'?'fire':'hit');}break;}
   case 'vines':{sfx('heal');const ps3=poseSet(u);if(ps3){u.pose=ps3.wind;await wait(150);u.pose=ps3.hit;}let vi=0;for(const [r,c] of areaTiles('cross',t.r,t.c))if(!unitAt(r,c)&&tcost('foot',tile(r,c))<99){G.vines.push({r,c,turns:2});FX.push({k:'vine',x:c*TS+24,y:r*TS+38,age:-vi*90,life:900,seed:r*13+c});vi++;}setTimeout(()=>{u.pose=null;},300);gainXP(u,10);await wait(300);break;}
   case 'snare':{G.traps.push({r:t.r,c:t.c,side:u.side,lv:u.lv});sfx('tick');gainXP(u,8);break;}
@@ -2512,6 +2538,7 @@ function checkEnd(){
  const rowan=G.units.find(u=>u.hero==='rowan');
  if(rowan&&rowan.dead)return endBattle(false,'Rowan has fallen.');
  if(m.lose&&m.lose.protect)for(const tg of m.lose.protect){const u=G.units.find(x=>(x.tag===tg||x.hero===tg)&&x.side!=='R');if(u&&u.dead)return endBattle(false,`${u.name} was lost.`);}
+ if(m.lose&&m.lose.burn&&(G.burnt||0)>=m.lose.burn)return endBattle(false,'Too much of the forest has burned.');   // R-078
  if(w.type==='escape'&&w.who==='civ'){const civs=G.units.filter(u=>u.tag==='civ');const dead=civs.filter(u=>u.dead).length,esc=civs.filter(u=>u.escaped).length;if(civs.length-dead<w.need)return endBattle(false,'Too many villagers were lost.');if(esc>=w.need&&civs.every(u=>u.dead||u.escaped))return endBattle(true,'The villagers are safe.');if(esc>=w.need&&!civs.some(u=>!u.dead&&!u.escaped))return endBattle(true,'The villagers are safe.');}
  if((w.type==='escape'||w.type==='reach')&&w.who==='rowan'&&rowan&&rowan.escaped)return endBattle(true,w.type==='reach'?'Rowan reached the goal.':'Rowan escaped.');
  if(w.type==='catch'){const t=G.units.find(u=>u.tag===w.tag);if(t&&t.dead)return endBattle(true,`${t.name} is caught.`);if(t&&t.gone)return endBattle(false,`${t.name} got away.`);}
@@ -2983,9 +3010,9 @@ function ui(){
    else if(G.phase==='moved')h+=`<p class="hint">Pick an action from the menu, tap an enemy${C.sel&&wallTargetsFrom(C.sel,C.sel.r,C.sel.c,C.sel.moved).length?' or a cracked wall':''} to attack, or tap the unit to wait.</p>`;
    else if(G.phase==='canto')h+=`<p class="hint">Hit and Run: tap a gold tile to keep moving, or tap the unit to stay.</p>`;}}
  else if(G.inspect&&G.inspect.unit&&byId(G.inspect.unit)&&!byId(G.inspect.unit).dead){const u=byId(G.inspect.unit);h=unitCard(u)+(u.side==='R'?'<p class="hint">Pale: where it can move. Red: where it can strike.</p>':'');}
- else if(G.inspect&&G.inspect.r!=null){const ch=tile(G.inspect.r,G.inspect.c);const chest=G.chests.find(x=>x.r===G.inspect.r&&x.c===G.inspect.c&&(x.kind!=='hidden'||x.found));h=`<div class="un">${esc(TER[ch].n)}</div><p class="tip">${esc(TER[ch].tip)}</p>${chest?`<p class="tip">${chest.open?'An empty chest.':chest.kind==='iron'?'An iron chest. Needs a scout or an Iron Key.':'A treasure chest. End a unit’s turn on it to open it.'}</p>`:''}`;}
+ else if(G.inspect&&G.inspect.r!=null){const ch=tile(G.inspect.r,G.inspect.c);const chest=G.chests.find(x=>x.r===G.inspect.r&&x.c===G.inspect.c&&(x.kind!=='hidden'||x.found));h=`<div class="un">${esc(TER[ch].n)}</div><p class="tip">${esc(TER[ch].tip)}</p>${ch==='F'&&burnsOn()?`<p class="tip" style="color:#ff9a5a">Fire that hits a unit here burns the tree (${G.burnt||0} of ${M.lose.burn} burned; ${M.lose.burn} loses).</p>`:''}${chest?`<p class="tip">${chest.open?'An empty chest.':chest.kind==='iron'?'An iron chest. Needs a scout or an Iron Key.':'A treasure chest. End a unit’s turn on it to open it.'}</p>`:''}`;}
  else{const left=alive('R').length;h=`<p class="hint">${!G.started?'':human()?'Tap one of your units to give orders. Tap an enemy to see its reach. Drag to pan, pinch or use +/− to zoom.':'The enemy is moving…'}</p>
-   <div class="obj">${esc(M.obj||'')}</div><dl class="st" style="grid-template-columns:1fr 1fr 1fr"><div><dt>YOURS</dt><dd>${alive('B').length}</dd></div><div><dt>ENEMY</dt><dd>${G.units.filter(u=>u.side==='R'&&!u.dead&&!u.gone&&seenByPlayer(u)).length}</dd></div><div><dt>CHESTS</dt><dd>${G.chests.filter(c=>!c.open&&c.kind!=='hidden').length}</dd></div></dl>`;}
+   <div class="obj">${esc(M.obj||'')}</div><dl class="st" style="grid-template-columns:repeat(${burnsOn()?4:3},1fr)"><div><dt>YOURS</dt><dd>${alive('B').length}</dd></div><div><dt>ENEMY</dt><dd>${G.units.filter(u=>u.side==='R'&&!u.dead&&!u.gone&&seenByPlayer(u)).length}</dd></div><div><dt>CHESTS</dt><dd>${G.chests.filter(c=>!c.open&&c.kind!=='hidden').length}</dd></div>${burnsOn()?`<div><dt>BURNED</dt><dd style="color:${(G.burnt||0)>=M.lose.burn-1?'#ff7a5a':'inherit'}">${G.burnt||0} / ${M.lose.burn}</dd></div>`:''}</dl>`;}
  $('#card').innerHTML=h;const pc=$('#card .por');if(pc)portrait(pc,byId(+pc.dataset.u));
  $('#log').innerHTML=G.log.slice(0,16).map(e=>`<li class="${e.s}">${esc(e.m)}</li>`).join('');
  renderMenu(C);
@@ -4830,7 +4857,7 @@ MISSIONS.push({
 MISSIONS.push({
  id:'m12',num:'12',name:"The Silverwood Border",act:2,style:'plains',
  brief:"The Silverwood's border trees have rotted black. An elf scout will let you pass only if you cut them down without burning her forest.",
- obj:"Destroy the four blighted wardwoods. Lyra must survive.",
+ obj:"Destroy the four blighted wardwoods. Lyra must survive. Burn 4 forest tiles and you lose.",
  map:[
   '....FFFFWFFFFFFFFFFFFF',
   '...FFF..WFFF..FFFFFFFF',
@@ -4867,7 +4894,7 @@ MISSIONS.push({
   {r:1,c:13,kind:'hidden',loot:{item:'tonic'}}
  ],
  win:{type:'boss'},
- lose:{protect:['lyra']},
+ lose:{protect:['lyra'],burn:4},
  events:[
   {when:{start:1},scene:[
    {w:'lyra',x:'Those wardwoods were my teachers. The rot took them. Cut them down, and do not burn one leaf more than you must.'},
