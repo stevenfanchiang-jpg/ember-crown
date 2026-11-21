@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="2814c3b02d";window.EC_BUILT="Nov 21, 7:24 am";
+window.EC_VERSION="1b61e763ff";window.EC_BUILT="Nov 21, 7:30 am";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -4542,8 +4542,10 @@ MISSIONS.push({
    {w:'sable',x:'Lord of Fallowmere! Hand over the boy with the ember scar, and your keep may stand.'},
    {w:'edric',x:'There’s no such boy here, Captain. Only horses and old men.'},
    {w:'sable',x:'I have my orders, Sir Edric. I would rather not burn a knight I once saluted. Don’t make me.'},
-   {w:'edric',x:'Nobody is making you, Captain. That’s the trouble with orders.'},
-   // farewell moved here from turn 3 (owner 2026-11-21): Edric used to fall before he could say it
+   {w:'edric',x:'Nobody is making you, Captain. That’s the trouble with orders.'}
+  ]},
+  {when:{turn:2},scene:[
+   // farewell at the start of turn 2 (owner 2026-11-21): Edric now holds the gate, so he lives to say it
    {w:'edric',x:'Rowan. Come here. No, don’t argue for once.'},
    {w:'edric',x:'There’s a letter in my saddlebag. And take this ring. It was never really mine.'},
    {w:'rowan',x:'Come with us. Please. You can’t hold them alone.'},
@@ -4552,9 +4554,7 @@ MISSIONS.push({
    {w:'kael',x:'Father, I...'},
    {w:'edric',x:'Swear it, boy!'},
    {w:'kael',x:'...I swear.'},
-   {w:'narr',x:'Sir Edric draws his sword and steps into the gateway. He does not look back at either of them.'}
-  ]},
-  {when:{turn:2},scene:[
+   {w:'narr',x:'Sir Edric draws his sword and steps into the gateway. He does not look back at either of them.'},
    {w:'narr',x:'Soldiers scale the east wall and run north to cut off the postern.'},
    {w:'kael',x:'They’re circling round! Move, Rowan!'}
   ],spawn:[['soldier',5,3,17,{pal:'R',ai:'aggr'}],['soldier',4,4,17,{pal:'R',ai:'aggr'}]]},
