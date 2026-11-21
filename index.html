@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="1b61e763ff";window.EC_BUILT="Nov 21, 7:30 am";
+window.EC_VERSION="5d84b64ddb";window.EC_BUILT="Nov 21, 11:28 am";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -2895,7 +2895,8 @@ async function aiSide(side){
 const cv=$('#cv'),g=cv.getContext('2d'),view=$('#view');
 let dpr=1,vw=300,vh=300;
 const cam={x:0,y:0,z:1};let camTok=0;
-function resize(){dpr=Math.min(window.devicePixelRatio||1,2);vw=Math.max(50,view.clientWidth);vh=Math.max(50,view.clientHeight);cv.width=Math.round(vw*dpr);cv.height=Math.round(vh*dpr);if(G)clampCam();}
+function resize(){dpr=Math.min(window.devicePixelRatio||1,3);   // was capped at 2: map figures blurred on 3x iPhones (owner 2026-11-21)
+vw=Math.max(50,view.clientWidth);vh=Math.max(50,view.clientHeight);cv.width=Math.round(vw*dpr);cv.height=Math.round(vh*dpr);if(G)clampCam();}
 new ResizeObserver(resize).observe(view);
 const mapW=()=>G.cols*TS,mapH=()=>G.rows*TS;
 function clampCam(){const w=vw/cam.z,h=vh/cam.z,m=TS*.6;cam.x=mapW()+2*m<=w?-(w-mapW())/2:clamp(cam.x,-m,mapW()-w+m);cam.y=mapH()+2*m<=h?-(h-mapH())/2:clamp(cam.y,-m,mapH()-h+m);}
@@ -3784,7 +3785,9 @@ function spriteFor(u){
 // Map sprites are made at 2 px per unit (front three-quarter view); battle sprites at 4 (side-on).
 // retro map figures (owner 2026-11-18, Dragon Knight II style): small crisp chibi sprites on the map,
 // the painted 3D sprites stay in the battle view. Setting: the figure button in Settings (ec-retro).
-let RETRO_ON=LS.get('ec-retro',1);
+// owner 2026-11-21: painted 3D figures are the map default (every unit has one; one-off 2D units have no retro figure).
+// New key so everyone gets the new default; the Settings figure button still turns retro on.
+let RETRO_ON=LS.get('ec-retro2',0);
 function retroImg(S,u){const R=(u&&u.side==='R'&&S.retroR)||S.retro;if(!R)return null;
  const d=u&&u.dir&&R[u.dir]&&imgOK(R[u.dir].img)?R[u.dir]:R.map;return d&&imgOK(d.img)?d:null;}
 /* 2D key-frame motion (owner decision 2026-11-19). Six painted frames per unit: idle = ready<->breath with a small
@@ -3837,7 +3840,7 @@ function drawProp(g,k,x,y,w,h){
  const b=document.createElement('button');b.className='icon';b.id='bRetro';
  const paint=()=>{b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="8" y="3" width="8" height="7"/><rect x="7" y="10" width="10" height="7"/><path d="M9 17v4M15 17v4"/>'+(RETRO_ON?'':'<path d="M3 21L21 3" stroke="#e8573f"/>')+'</svg>';
   b.title=b.ariaLabel='Retro map figures: '+(RETRO_ON?'on':'off');b.style.opacity=RETRO_ON?1:.6;};
- paint();b.onclick=()=>{RETRO_ON=RETRO_ON?0:1;LS.set('ec-retro',RETRO_ON);paint();sfx('tick');toast('Retro map figures '+(RETRO_ON?'on':'off'));};
+ paint();b.onclick=()=>{RETRO_ON=RETRO_ON?0:1;LS.set('ec-retro2',RETRO_ON);paint();sfx('tick');toast('Retro map figures '+(RETRO_ON?'on':'off'));};
  const ref=$('#bMenu');if(ref)tools.insertBefore(b,ref);else tools.appendChild(b);})();
 function drawArt(g,u,t,P,L,ph){const S=spriteFor(u);if(S)drawSprite(g,S,u);else drawUnitArt(g,u,t,P,L,ph);}
 // the shared miniature base, tinted by side
