@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="98f0dbd384";window.EC_BUILT="Nov 20, 2:43 pm";
+window.EC_VERSION="b70b99a04c";window.EC_BUILT="Nov 20, 11:41 pm";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -499,6 +499,10 @@ const RULES={
  zoc:true,            // R-015 zone of control on/off
  crackWall:20,        // R-073 HP of a cracked wall (Z) before it falls into rubble
  night:{sight:3,light:3},  // R-075 night missions: tiles each side sees round its units; tiles a campfire or lit torch lights
+ ballista:{mt:8,rng:[2,6],flyer:3},   // R-088 ballista: might added to ATK, range, damage ×3 against flyers
+ tide:{dmg:5},           // R-087 damage to a unit caught on sand when the tide floods it
+ sapper:{dmg:5},         // R-085 a falling sapper's blast on each of the 4 tiles next to it
+ cart:{push:4},         // R-083 rail tiles an ore cart rolls when pushed (up to)
  poison:{dmg:2,turns:3}    // R-077 poison: HP lost at the start of each of the target's next turns (never the last HP)
 };
 /* ================= CLASSES ================= */
@@ -517,6 +521,7 @@ const CLS={
  scout:C({n:'Scout',tier:1,fam:'stealth',mt:'foot',mv:6,rng:[1,1],wt:['dagger'],b:[16,4,3,1,2,10],g:[65,40,25,10,30,70],sk:['lockpick'],look:{armor:'leather',head:'hood',weapon:'dagger',scarf:1},promo:[{to:'thief',lv:10},{to:'assassin',lv:10},{to:'trapper',lv:10}]}),
  hauler:C({n:'Hauler',tier:1,fam:'heavy',mt:'heavy',mv:4,rng:[1,1],wt:['club'],b:[28,8,6,0,0,3],g:[110,55,45,0,15,25],sk:['haul'],look:{body:'halfogre',armor:'cloth',head:'none',weapon:'club',scale:1.25},promo:[{to:'porter',lv:10},{to:'brawler',lv:10}]}),
  greywarden:C({n:'Greywarden',tier:2,fam:'mage',mt:'foot',mv:4,rng:[1,2],wt:['tome'],b:[22,2,4,11,10,7],g:[60,10,20,65,55,45],sk:['fireball','timefold'],look:{armor:'greyrobe',head:'wizardgrey',weapon:'staffOrb',cape:1},promo:[]}),
+ cart:C({n:'Ore Cart',tier:0,fam:'civ',mt:'foot',mv:0,rng:[0,0],wt:[],b:[30,0,8,0,4,0],g:[0,0,0,0,0,0],sk:[],look:{body:'cart'},promo:[]}),   // R-083 a still unit pushed along rails
  civ:C({n:'Villager',tier:0,fam:'civ',mt:'foot',mv:4,rng:[0,0],wt:[],b:[18,0,2,0,1,4],g:[0,0,0,0,0,0],sk:[],look:{armor:'tunic',head:'hair',weapon:'none'},promo:[]}),
  // ---- tier 2 ----
  knight:C({n:'Knight',tier:2,fam:'cav',mt:'cav',mv:6,rng:[1,1],wt:['sword','lance'],pb:[5,2,3,0,1,1],g:[90,55,50,5,30,40],sk:['rally','charge'],look:{armor:'plate',head:'greathelm',weapon:'lance',off:'shield',mount:'horse',cape:1},promo:[{to:'paladin',lv:20,item:'seal'},{to:'blackguard',lv:20,item:'seal'}]}),
@@ -643,6 +648,12 @@ const SK={
  riposte:{n:'Riposte',kind:'passive',d:'Counters every attack, even from range 2.'},
  intercept:{n:'Intercept',kind:'passive',d:'Takes attacks aimed at an adjacent ally.'},
  brace:{n:'Brace',kind:'passive',d:'Cavalry and flyers that end next to him take a free hit.'},
+ barrage:{n:'Catapult Shot',kind:'telegraph',area:'sq3',rng:[3,5],every:2,only:true,dmg:'atk',vs:'def',mult:1,d:'Marks a 3×3 area 3–5 tiles away; on its next turn the shot lands there and hits everyone in it. Fires every other turn. Can\u2019t move, attack normally or strike back.'},   // R-082
+ breath:{n:'Fire Breath',kind:'telegraph',area:'cone',every:1,dmg:'atk',vs:'res',mult:.9,el:'fire',d:'Marks a cone of fire in front of it; on its next turn the fire falls there and hits everyone in it, then it marks the next one. Armour doesn\u2019t help: RES does.'},   // R-082
+ push:{n:'Push Cart',kind:'active',uses:99,tgt:'push',d:'Push an ore cart next to you up to 4 tiles along the rails. Uses your action.'},   // R-083 (offered to anyone next to a cart)
+ blast:{n:'Blast Pack',kind:'passive',d:'Explodes when it falls: 5 damage to everyone on the 4 tiles next to it, friend or foe, and to cracked walls.'},   // R-085 goblin sapper
+ seaborn:{n:'Seaborn',kind:'passive',d:'Swims: can move through and stand in deep water (2 move a tile). Rises out of the sea.'},   // R-086 sea-ghoul
+ ballista:{n:'Fire Ballista',kind:'active',uses:99,tgt:'ballista',dmg:'atk',d:'From a ballista tile: a huge bolt at an enemy 2–6 tiles away (ATK + 8). Triple damage to flyers. Can\u2019t be countered. Each ballista fires once a turn.'},   // R-088 (offered on a ballista tile)
  meteor:{n:'Meteor',kind:'active',uses:1,tgt:'tile',rng:[3,5],area:'sq3',dmg:'mag',mult:1.1,el:'fire',d:'A 3×3 firestorm far away.'},
  sanctuary:{n:'Sanctuary',kind:'active',uses:1,tgt:'self',area:'sq3',d:'Heals every ally in a 3×3 area.'},
  thief:{n:'Raider',kind:'passive',d:'Rushes for treasure chests, then carries the loot back to where it came from. Defeat it on the way to get the loot.'},
@@ -731,6 +742,9 @@ const HERO={
 };
 const WDEF={goblin:'knife',goblinthief:'knife',goblinarcher:'shortbow',ogre:'logclub',bandit:'ironsword',banditarcher:'shortbow',pikeman:'ironlance',soldier:'ironsword',xbowman:'lightxbow',blackrider:'ironlance',warpriest:'healstaff',skeleton:'rustysword',skelarcher:'shortbow',ghoul:'fang',wraith:'shade',wolf:'fang',frosttroll:'icicle',shinobi:'kris',regentcap:'steelsword',
  swordsman:'ironsword',spearman:'ironlance',rider:'ironlance',archer:'shortbow',apprentice:'embertome',acolyte:'healstaff',scout:'knife',hauler:'logclub',squire:'ironsword',civ:null,militia:'pitchfork'};
+// BUG-standin-weapons (owner OK 2026-11-20): a class with no default weapon (promoted classes used as Act II stand-ins and guests)
+// gets the iron weapon of its first weapon type, else the first weapon of that type. Units with a hero record keep their own gear.
+for(const k in CLS){const t=(CLS[k].wt||[])[0];if(WDEF[k]||!t)continue;const ks=Object.keys(IT).filter(i=>IT[i].type==='weapon'&&IT[i].wt===t);WDEF[k]=ks.find(i=>/^iron/.test(i))||ks[0]||null;}
 const ADEF={soldier:'chain',pikeman:'chain',xbowman:'chain',blackrider:'plate',regentcap:'plate',bandit:'leather',banditarcher:'leather',warpriest:'robe',spearman:'chain',rider:'chain',archer:'leather',swordsman:'leather',apprentice:'robe',acolyte:'robe',scout:'leather',hauler:'clothes',squire:'chain'};
 const GENERIC_NAMES=['Aldo','Bree','Cormac','Dara','Ewan','Fen','Greta','Hob','Isla','Jory','Kit','Lise','Mabry','Ned','Orla','Piet','Quill','Rhys','Sela','Tam','Ula','Vane','Wynn','Yorick','Zell','Ansel','Brin','Carys','Dunn','Ember'];
 
@@ -941,6 +955,12 @@ function gryphon(g,P,L,ph,t){
 }
 /* ---------- creatures ---------- */
 const BODY={
+ cart(g,P,L,ph,t,u){   // R-083 ore cart: a plank box of ore on four iron wheels
+  for(const x of [-10,10]){g.beginPath();g.arc(x,-5,4.6,0,7);sh(g,'#3a3430',1);g.fillStyle='#8a8a8a';g.beginPath();g.arc(x,-5,1.6,0,7);g.fill();}
+  g.beginPath();g.moveTo(-17,-24);g.lineTo(17,-24);g.lineTo(14,-8);g.lineTo(-14,-8);g.closePath();sh(g,grad(g,'cartb',-17,-24,17,-8,'#8a5a32',.2),1);
+  g.fillStyle='#5b5b5b';g.fillRect(-16,-21,32,2.2);g.fillRect(-15,-13,30,2.2);
+  for(const [x,y,r,c] of [[-8,-26,5,'#6f6a64'],[0,-28,6,'#7d7770'],[8,-26,5,'#6f6a64'],[3,-25,3,'#d9b24a'],[-4,-25,2.4,'#d9b24a']]){g.beginPath();g.arc(x,y,r,0,7);sh(g,c,1);}
+ },
  goblin(g,P,L,ph,t,u){g.save();g.scale(.82,.82);const sk='#7fa04a';legs(g,P,ph,'#4a3a24');g.beginPath();g.roundRect(-7.5,-22,15,13,5);sh(g,grad(g,'gbd',-8,-22,8,-9,P.main));g.fillStyle=P.trim;g.fillRect(-7,-14,14,2);
   if(L.sack){g.beginPath();g.ellipse(-9,-17,6,7,0,0,7);sh(g,'#a8885a',1);}
   weapon(g,P,L,u,t);hand(g,7,-15,sk);
@@ -1096,11 +1116,23 @@ const TER={
  Z:{n:'Cracked Wall',c:99,d:0,block:1,tip:'A weak wall with 20 HP. Hit it, or blast it, and it falls into rubble you can walk over.'},
  Y:{n:'Rail',c:1,d:0,tip:'Mine rails. Open ground.'},
  Q:{n:'Tide Sand',c:1,d:0,tip:'Wet sand. The tide will cover it.'},
+ q:{n:'Flooded Sand',c:99,d:0,block:1,water:1,tip:'The tide is in: deep water. Only swimmers and flyers cross.'},   // R-087 Tide Sand after the tide reaches it
  j:{n:'Campfire',c:99,d:0,block:1,low:1,tip:'Impassable. Lights the dark around it.'},
  A:{n:'Ballista',c:1,d:1,fort:1,tip:'+1 defense. A great crossbow on the wall.'}
 };
-function tcost(mt,ch){const T=TER[ch];if(!T)return 99;if(mt==='fly')return 1;if(T.block)return 99;if(mt==='cav'&&T.cav)return T.cav;if(mt==='heavy'&&T.heavy)return T.heavy;return T.c;}
+function tcost(mt,ch){const T=TER[ch];if(!T)return 99;if(mt==='fly')return 1;if(mt==='swim'&&T.water)return 2;   // R-086 swimmers cross deep water
+if(T.block)return 99;if(mt==='cav'&&T.cav)return T.cav;if(mt==='heavy'&&T.heavy)return T.heavy;return T.c;}
 
+// mine rails on the procedural ground: a gravel bed, sleepers and two iron rails toward each neighbouring rail tile
+function drawRail(t,x,y,up,dn,lf,rt){if(!(up||dn||lf||rt))lf=rt=true;const cx=x+24,cy=y+24;
+ t.fillStyle='rgba(110,96,74,.55)';if(lf||rt)t.fillRect(lf?x:cx-13,cy-13,(lf?cx-x:13)+(rt?x+TS-cx:13),26);if(up||dn)t.fillRect(cx-13,up?y:cy-13,26,(up?cy-y:13)+(dn?y+TS-cy:13));
+ t.fillStyle='#6b4a2e';
+ if(lf||rt){const x0=lf?x:cx-6,x1=rt?x+TS:cx+6;for(let xx=x0+3;xx<x1-2;xx+=11)t.fillRect(xx,cy-11,5,22);}
+ if(up||dn){const y0=up?y:cy-6,y1=dn?y+TS:cy+6;for(let yy=y0+3;yy<y1-2;yy+=11)t.fillRect(cx-11,yy,22,5);}
+ t.strokeStyle='#a3a9ae';t.lineWidth=2.4;t.beginPath();
+ if(lf||rt){const x0=lf?x:cx-8,x1=rt?x+TS:cx+8;for(const o of [-7,7]){t.moveTo(x0,cy+o);t.lineTo(x1,cy+o);}}
+ if(up||dn){const y0=up?y:cy-8,y1=dn?y+TS:cy+8;for(const o of [-7,7]){t.moveTo(cx+o,y0);t.lineTo(cx+o,y1);}}
+ t.stroke();}
 let terr=null,DECOR=[],WATER=[];
 function bakeTerrain(){
  const SC=2,rows=G.rows,cols=G.cols,R=rng(hash(G.mid+((G.m&&G.m.map)||G.map).join('')));
@@ -1116,7 +1148,7 @@ function bakeTerrain(){
    if(ch==='u'&&WAS(r,c)==='Z')drawRubble(t,x,y,r,c);
    if(ch==='E'&&T(r,c-1)!=='E'&&T(r-1,c)!=='E')DECOR.push({y:y+40,x0:x,x1:x+TS,y0:y-10,y1:y+TS,draw:(g,tm)=>drawExit(g,x,y,tm)});}
   return;}
- const wet=ch=>ch==='W'||ch==='S'||ch==='B';
+ const wet=ch=>ch==='W'||ch==='S'||ch==='B'||ch==='q';
  const stone=ch=>ch==='R'||ch==='T'||ch==='G'||ch==='#';
  const cold=G.mapStyle==='snow';
  const base=cold?'#dfe7ec':G.mapStyle==='fen'?'#5d7a4a':G.mapStyle==='town'?'#7a8a5a':'#6a9846';
@@ -1140,11 +1172,13 @@ function bakeTerrain(){
   if(ch==='~'&&!TX){t.fillStyle='rgba(70,80,50,.75)';t.fillRect(x,y,TS,TS);t.fillStyle='rgba(60,90,80,.55)';for(let i=0;i<4;i++){t.beginPath();t.ellipse(x+6+R()*36,y+6+R()*36,6+R()*6,3+R()*3,0,0,7);t.fill();}t.strokeStyle='#5d7a3a';t.lineWidth=1.2;for(let i=0;i<5;i++){const xx=x+R()*TS,yy=y+R()*TS;line(t,xx,yy,xx-1,yy-7);line(t,xx+2,yy,xx+3,yy-6);}}
   if(ch==='*'&&!TX){t.fillStyle='rgba(250,252,255,.8)';t.fillRect(x,y,TS,TS);t.fillStyle='rgba(200,215,225,.6)';for(let i=0;i<3;i++){t.beginPath();t.ellipse(x+R()*TS,y+R()*TS,8,3,0,0,7);t.fill();}}
   if(ch==='I'&&!TX){t.fillStyle='#bcdcef';t.fillRect(x,y,TS,TS);t.strokeStyle='rgba(255,255,255,.7)';t.lineWidth=1;for(let i=0;i<3;i++){const xx=x+R()*TS,yy=y+R()*TS;line(t,xx,yy,xx+10,yy-6);}}
+  if(ch==='Q'&&!TX){t.fillStyle='#bfae80';t.fillRect(x,y,TS,TS);t.strokeStyle='rgba(120,140,150,.35)';t.lineWidth=1.2;for(let i=0;i<3;i++){const yy=y+8+i*14+R()*4;t.beginPath();t.moveTo(x+2,yy);t.quadraticCurveTo(x+24,yy-4,x+46,yy);t.stroke();}}   // R-087 wet tide sand
   if(ch===','&&!TX){t.fillStyle='#d8c08a';t.fillRect(x,y,TS,TS);t.fillStyle='rgba(150,120,70,.25)';for(let i=0;i<10;i++){t.fillRect(x+R()*TS,y+R()*TS,1.5,1.5);}}
   if(ch==='c'&&!TX){t.fillStyle='#c7a94a';t.fillRect(x+2,y+2,TS-4,TS-4);t.strokeStyle='#9a7f2e';t.lineWidth=1.3;for(let i=6;i<TS;i+=7){line(t,x+i,y+4,x+i,y+TS-4);}}
   if((ch==='h'||ch==='b')&&!(TX&&lgOn())){t.fillStyle='rgba(168,139,92,.85)';t.beginPath();t.ellipse(x+24,y+30,22,15,0,0,7);t.fill();}
   if(ch==='n'){t.fillStyle='rgba(140,115,80,.6)';t.beginPath();t.ellipse(x+24,y+30,20,12,0,0,7);t.fill();}
   if(ch==='V')drawChasm(t,x,y,T(r-1,c)!=='V'&&T(r-1,c)!=null,T(r+1,c)!=='V'&&T(r+1,c)!=null,T(r,c-1)!=='V'&&T(r,c-1)!=null,T(r,c+1)!=='V'&&T(r,c+1)!=null);
+  if(ch==='Y'){const RL=(a,b)=>{const q=T(a,b);return q==='Y'||q==='E';};drawRail(t,x,y,RL(r-1,c),RL(r+1,c),RL(r,c-1),RL(r,c+1));}   // R-083 rails show where carts can roll
   if(ch==='u'&&WAS(r,c)==='Z')drawRubble(t,x,y,r,c);
   else if(ch==='u'){t.fillStyle='#8f8a7c';for(let i=0;i<7;i++){t.beginPath();t.ellipse(x+4+R()*40,y+4+R()*40,3+R()*4,2+R()*3,R(),0,7);t.fill();}}
   if(stone(ch)){if(!TX){t.fillStyle='#9a9487';t.fillRect(x,y,TS,TS);for(let i=0;i<3;i++)for(let j=0;j<3;j++){t.fillStyle=['#a7a194','#938d80','#a09a8c'][(R()*3)|0];t.fillRect(x+j*16+1,y+i*16+1,14,14);}}
@@ -1189,6 +1223,7 @@ function bakeTerrain(){
   if(ch==='x'){const col=['#c23a2e','#3a6fd8','#e4b64e','#3f9a5a'][(R()*4)|0];DECOR.push({y:y+20,x0:x,x1:x+TS,y0:y,y1:y+TS,draw:g=>drawProp(g,'stall',x+24,y+32,44,36)||drawStall(g,x,y,col)});}
   if(ch==='f'){const L=T(r,c-1)==='f',Rr=T(r,c+1)==='f',U=T(r-1,c)==='f',Dn=T(r+1,c)==='f';DECOR.push({y:y+30,x0:x,x1:x+TS,y0:y,y1:y+TS,draw:g=>drawFence(g,x,y,L,Rr,U,Dn)});}
   if(ch==='Z'){const front=T(r+1,c)!=='#'&&T(r+1,c)!=='Z',k=r+','+c;DECOR.push({y:y+TS+.5,x0:x,x1:x+TS,y0:y-16,y1:y+TS,draw:g=>drawCracked(g,x,y,front,k)});}
+  if(ch==='A'){DECOR.push({y:y+32,x0:x-8,x1:x+TS+8,y0:y-12,y1:y+TS,draw:g=>drawBallista(g,x,y)});}   // R-088
   if(ch==='j'){DECOR.push({y:y+30,x0:x,x1:x+TS,y0:y-20,y1:y+TS,draw:(g,tm)=>drawCampfire(g,x,y,tm)});}
   if(ch==='#'){const front=T(r+1,c)!=='#';DECOR.push({y:y+TS+.5,x0:x,x1:x+TS,y0:y-16,y1:y+TS,draw:g=>drawWall(g,x,y,front)});}
   if(ch==='G'){const lw=T(r,c-1)==='#',rw=T(r,c+1)==='#';DECOR.push({y:y+6,x0:x,x1:x+TS,y0:y-18,y1:y+TS,draw:g=>drawGate(g,x,y,lw,rw)});}
@@ -1242,6 +1277,14 @@ function drawRubble(t,x,y,r,c){const R=rng(hash('rubble'+r+','+c));t.fillStyle='
 function drawCracked(g,x,y,front,k){drawWall(g,x,y,front);g.strokeStyle='#2e2a24';g.lineWidth=1.8;g.lineCap='round';
  g.beginPath();g.moveTo(x+10,y-16);g.lineTo(x+18,y-4);g.lineTo(x+14,y+6);g.lineTo(x+24,y+18);g.lineTo(x+21,y+30);g.moveTo(x+38,y-14);g.lineTo(x+31,y-2);g.lineTo(x+36,y+10);g.moveTo(x+18,y-4);g.lineTo(x+28,y-6);g.stroke();
  const hp=typeof G!=='undefined'&&G&&G.walls?G.walls[k]:null;if(hp!=null){const w=30,bx=x+9,by=y-24;g.fillStyle='rgba(10,10,10,.78)';g.fillRect(bx-1.5,by-1.5,w+3,7);g.fillStyle='#d9a441';g.fillRect(bx,by,w*hp/RULES.crackWall,4);}}
+// a ballista on the wall-walk: a big crossbow on a timber stand, pointing up and out
+function drawBallista(g,x,y){const cx=x+24,cy=y+30;g.save();g.lineCap='round';
+ g.strokeStyle='#4a3424';g.lineWidth=4;g.beginPath();g.moveTo(cx-10,cy+8);g.lineTo(cx,cy-2);g.lineTo(cx+10,cy+8);g.stroke();
+ g.strokeStyle='#7a5636';g.lineWidth=5;g.beginPath();g.moveTo(cx-16,cy-2);g.lineTo(cx+16,cy-10);g.stroke();
+ g.strokeStyle='#5b5b5b';g.lineWidth=3;g.beginPath();g.moveTo(cx+4,cy-21);g.quadraticCurveTo(cx+14,cy-8,cx+6,cy+3);g.stroke();
+ g.strokeStyle='#d8d0bc';g.lineWidth=1;g.beginPath();g.moveTo(cx+4,cy-21);g.lineTo(cx-10,cy-3);g.lineTo(cx+6,cy+3);g.stroke();
+ g.strokeStyle='#c9a46a';g.lineWidth=2;g.beginPath();g.moveTo(cx-12,cy-1);g.lineTo(cx+20,cy-11);g.stroke();g.fillStyle='#9aa0a6';g.beginPath();g.moveTo(cx+24,cy-12.5);g.lineTo(cx+18,cy-14);g.lineTo(cx+19,cy-9);g.closePath();g.fill();
+ g.restore();}
 function drawCampfire(g,x,y,tm){const cx=x+24,cy=y+32,f=Math.sin((tm||0)/110)*.5+Math.sin((tm||0)/47)*.3;
  const gl=g.createRadialGradient(cx,cy-6,2,cx,cy-6,30);gl.addColorStop(0,'rgba(255,190,90,.35)');gl.addColorStop(1,'rgba(255,190,90,0)');g.fillStyle=gl;g.fillRect(x-8,y-8,TS+16,TS+16);
  g.fillStyle='#6d6458';for(let i=0;i<7;i++){const a=i/7*Math.PI*2;g.beginPath();g.ellipse(cx+Math.cos(a)*13,cy+Math.sin(a)*6,4,3,0,0,7);g.fill();}
@@ -1861,7 +1904,7 @@ function tzBake(key){
  if(A.night){g.fillStyle='rgba(20,24,60,.18)';g.fillRect(0,0,TZW,TZH);}
  return {c,A};
 }
-function tzPlate(g,s,hl){g.font='bold 14px "Alegreya Sans","Segoe UI",system-ui,sans-serif';const w=Math.ceil(g.measureText(s.label).width)+22;let x=clamp(s.x,w/2+6,TZW-w/2-6),y=clamp(s.y+(s.ly!=null?s.ly:s.r*.8),16,TZH-16);
+function tzPlate(g,s,hl){g.font='bold 14px "Alegreya Sans","Segoe UI",system-ui,sans-serif';const w=Math.ceil(g.measureText(s.label).width)+22;const V=(typeof TZ_VIS!=='undefined'&&TZ_VIS)||[0,TZW];let x=clamp(s.x,Math.max(0,V[0])+w/2+6,Math.min(TZW,V[1])-w/2-6),y=clamp(s.y+(s.ly!=null?s.ly:s.r*.8),16,TZH-16);
  g.fillStyle='rgba(0,0,0,.35)';g.beginPath();g.roundRect(x-w/2+1,y-11+2.5,w,23,9);g.fill();
  g.beginPath();g.roundRect(x-w/2,y-11.5,w,23,9);g.fillStyle=hl?'rgba(104,74,22,.96)':'rgba(24,19,15,.86)';g.fill();g.strokeStyle=hl?'#ffd66e':'rgba(228,182,78,.6)';g.lineWidth=hl?2:1.3;g.stroke();
  g.fillStyle=hl?'#fff6d0':'#f3e7c3';g.textAlign='center';g.textBaseline='middle';g.fillText(s.label,x,y+.5);g.textBaseline='alphabetic';}
@@ -2123,8 +2166,8 @@ function stat(u,k){
 }
 // R-079: a still unit (a nest, Oakheart asleep) can't move, act, counter or hold a zone until G.turn reaches u.still
 function isStill(u){return !!u.still&&(u.still===true||!G||G.turn<u.still);}
-function movOf(u){if(u.frozen||isStill(u))return 0;let m=CLS[u.cls].mv;const x=u.eq.x?IT[u.eq.x]:null;if(x&&x.mov)m+=x.mov;if(u.buffs.mov)m+=u.buffs.mov;return m;}
-function mtOf(u){return CLS[u.cls].mt;}
+function movOf(u){if(u.frozen||isStill(u)||teleOnly(u))return 0;let m=CLS[u.cls].mv;const x=u.eq.x?IT[u.eq.x]:null;if(x&&x.mov)m+=x.mov;if(u.buffs.mov)m+=u.buffs.mov;return m;}
+function mtOf(u){return u.sk&&u.sk.includes('seaborn')?'swim':CLS[u.cls].mt;}   // R-086: 'swim' = foot on land, 2 a tile in deep water
 function canFight(u){const w=W(u);return !!w&&w.wt!=='staff'&&famOf(u)!=='civ';}
 function rangeOf(u,r,c,moved){
  if(!canFight(u))return null;let [a,b]=CLS[u.cls].rng;const w=W(u);
@@ -2176,7 +2219,7 @@ function reachOf(u){
 function pathTo(R,r,c){const out=[];let k=r+','+c;while(k){out.push(k.split(',').map(Number));k=R.par.get(k);}return out.reverse();}
 /* ---------- targeting ---------- */
 function targetsFrom(u,r,c,moved){
- const rg=rangeOf(u,r,c,moved);if(!rg)return [];
+ const rg=rangeOf(u,r,c,moved);if(!rg||teleOnly(u))return [];
  if(has(u,'pierce')&&moved)return [];
  return foesOf(u).filter(e=>visibleTo(e,u.side)&&(d=>d>=rg[0]&&d<=rg[1])(dist(r,c,e.r,e.c)));
 }
@@ -2205,7 +2248,8 @@ function wallAoe(u,k){const d=SK[k],w=W(u);return Math.max(1,Math.round((stat(u,
 // the bomb hook: any blast (area skills now; sappers and Fizzwick's bombs later) calls this per wall tile
 function hitWall(r,c,n){if(tile(r,c)!=='Z')return null;G.walls=G.walls||{};const hp=Math.max(0,wallHP(r,c)-n),k=r+','+c;
  if(hp>0){G.walls[k]=hp;return {hp,broke:false};}
- delete G.walls[k];if(G.m&&G.map===G.m.map)G.map=G.map.slice();G.map[r]=G.map[r].slice(0,c)+'u'+G.map[r].slice(c+1);
+ delete G.walls[k];if(G.m&&G.map===G.m.map)G.map=G.map.slice();const RT=(a,b)=>inMap(a,b)&&(tile(a,b)==='Y'||tile(a,b)==='E'),onRail=(RT(r-1,c)&&RT(r+1,c))||(RT(r,c-1)&&RT(r,c+1));   // R-083: a wall across a rail line breaks into rail
+ G.map[r]=G.map[r].slice(0,c)+(onRail?'Y':'u')+G.map[r].slice(c+1);
  return {hp:0,broke:true};}
 function resolveWallHit(a,r,c){const n=wallDmg(a),R=hitWall(r,c,n);if(!R)return null;
  return {n,hp:R.hp,broke:R.broke,msg:`${a.name} hits the cracked wall for ${n}`+(R.broke?' and it crumbles into rubble.':` (${R.hp} left).`)};}
@@ -2216,6 +2260,108 @@ function burnsOn(){return !!(G&&G.m&&G.m.lose&&G.m.lose.burn);}
 function isFireHit(a){const w=W(a);return isMagicAtk(a)&&!!w&&w.el==='fire';}
 function burnAt(r,c){if(!burnsOn()||!inMap(r,c)||tile(r,c)!=='F')return false;
  if(G.m&&G.map===G.m.map)G.map=G.map.slice();G.map[r]=G.map[r].slice(0,c)+'D'+G.map[r].slice(c+1);G.burnt=(G.burnt||0)+1;return true;}
+/* ---------- telegraphed area attacks (R-082, T-015) ---------- */
+// A unit with a 'telegraph' skill (catapult: Catapult Shot; Skarn: Fire Breath) marks an area on its own turn and
+// fires on its next turn at exactly those tiles, wherever it stands by then. No randomness: what is marked is what
+// is hit, and teleDmg() is both the forecast and the result. Everyone in the area is hit (friend or foe) except the
+// attacker. every:2 rests a turn after firing (mark, fire, mark, fire); every:1 marks again right after firing.
+// only: the shot is all it does (no move, no normal attack, no counter). Marks live in G.marks (kept in a saved battle).
+function teleSk(u){if(!u||!u.sk)return null;for(const k of u.sk)if(SK[k]&&SK[k].kind==='telegraph')return k;return null;}
+function teleOnly(u){const k=teleSk(u);return !!(k&&SK[k].only);}
+function coneTiles(r,c,dr,dc){const out=[];for(let k=1;k<=3;k++)for(let j=-(k-1);j<=k-1;j++)out.push([r+dr*k+dc*j,c+dc*k+dr*j]);return out.filter(([a,b])=>inMap(a,b));}
+function markOptions(u,k){const d=SK[k],out=[];
+ if(d.area==='cone'){for(const [dr,dc] of [[0,-1],[0,1],[-1,0],[1,0]])out.push({mid:[u.r+dr*2,u.c+dc*2],tiles:coneTiles(u.r,u.c,dr,dc)});}
+ else{const [a,b]=d.rng||[1,3];for(let r=u.r-b;r<=u.r+b;r++)for(let c=u.c-b;c<=u.c+b;c++){if(!inMap(r,c))continue;const t=dist(r,c,u.r,u.c);if(t<a||t>b)continue;out.push({mid:[r,c],tiles:areaTiles(d.area,r,c)});}}
+ return out.filter(o=>o.tiles.length);}
+// the AI's aim: most value of foes it can see in the area, minus its own side; ties go to the area whose centre is nearest those foes
+function chooseMark(u){const k=teleSk(u);if(!k)return null;let best=null,bs=0;
+ for(const o of markOptions(u,k)){let s=0;
+  for(const [r,c] of o.tiles){const v=unitAt(r,c);if(!v||v===u)continue;
+   if(friendly(v.side,u.side))s-=1.2;else if(visibleTo(v,u.side))s+=aiVal(v)-.01*dist(r,c,o.mid[0],o.mid[1]);}
+  if(s>bs+1e-9){bs=s;best=o;}}
+ return best?{id:u.id,k,tiles:best.tiles,mid:best.mid,turn:G.turn}:null;}
+function markOf(u){return (G.marks||[]).find(m=>m.id===u.id)||null;}
+function liveMarks(){return (G.marks||[]).filter(m=>{const u=byId(m.id);return u&&!u.dead&&!u.gone;});}
+function marksOn(r,c){return liveMarks().filter(m=>m.tiles.some(t=>t[0]===r&&t[1]===c));}
+function setMark(u){G.marks=(G.marks||[]).filter(m=>m.id!==u.id);const m=chooseMark(u);if(m)G.marks.push(m);return m;}
+function telePow(u,k){const d=SK[k],w=W(u);return Math.round((stat(u,d.dmg||'atk')+(w?w.mt:0))*(d.mult||1));}
+function teleDmg(u,k,v){const d=SK[k],raw=Math.round(telePow(u,k)*(isUndead(v)&&d.el==='fire'?1.5:1));
+ const td=terDef(v,v.r,v.c),arm=stat(v,d.vs||'def')+(d.vs==='res'?Math.floor(td/2):td)+(v.defend?RULES.defend:0);
+ return Math.max(1,raw-Math.max(0,arm));}
+// fire u's mark: changes HP, walls, forest and XP and returns the events for fireMark() to play
+function resolveMarkFire(u){const m=markOf(u);if(!m)return null;G.marks=G.marks.filter(x=>x!==m);const d=SK[m.k],ev=[];
+ for(const [r,c] of m.tiles){
+  if(tile(r,c)==='Z'){const n=Math.max(1,telePow(u,m.k)),R=hitWall(r,c,n);if(R)ev.push({t:'wall',r,c,n,broke:R.broke});continue;}
+  const v=unitAt(r,c);if(!v||v===u)continue;const n=teleDmg(u,m.k,v),foe=!friendly(v.side,u.side);v.hp-=n;ev.push({t:'hit',u:v,n});
+  if(d.el==='fire'){v.burned=1;if(burnAt(r,c))ev.push({t:'burn',r,c});}
+  if(foe)gainXP(u,6);
+  if(leaveCheck(v))ev.push(resolveLeave(v,foe?u:null));
+  else if(v.hp<=0)ev.push({t:'kill',u:v,by:foe?u:null,how:d.el==='fire'?'fire':'hit'});}
+ return {m,events:ev};}
+/* ---------- mine carts (R-083, T-016) ---------- */
+// Ore carts are still units (R-079) of class 'cart' with HP; enemies can wreck them. A fighting unit of the cart's
+// side standing next to it may spend its action to push it up to RULES.cart.push tiles along the rails (Y), either
+// way, never through units. A rail that runs into an Exit (E) lets the cart roll onto it: in a mission won by carts
+// (win.who 'cart') the cart is then safe on the lift (escaped). Carts never leave the rails.
+const isRail=(r,c)=>inMap(r,c)&&(tile(r,c)==='Y'||tile(r,c)==='E');
+function isCart(u){return !!u&&u.cls==='cart'&&!u.dead&&!u.gone;}
+function canPush(u){return !!u&&famOf(u)!=='civ'&&!isStill(u)&&!u.carried&&!u.frozen;}
+function cartSteps(cart){const ends=new Map(),par=new Map(),q=[[cart.r,cart.c,0]],seen=new Set([cart.r+','+cart.c]);
+ while(q.length){const [r,c,d]=q.shift();if(d>=RULES.cart.push||(d>0&&tile(r,c)==='E'))continue;
+  for(const [dr,dc] of [[1,0],[-1,0],[0,1],[0,-1]]){const nr=r+dr,nc=c+dc,k=nr+','+nc;if(seen.has(k)||!isRail(nr,nc)||unitAt(nr,nc))continue;
+   seen.add(k);par.set(k,r+','+c);ends.set(k,d+1);q.push([nr,nc,d+1]);}}
+ return {ends,par};}
+// every tile a cart next to u can be pushed to: [{r,c,cart}]
+function pushTargets(u){if(!canPush(u))return [];const out=[];
+ for(const cart of live().filter(x=>isCart(x)&&friendly(x.side,u.side)&&dist(x.r,x.c,u.r,u.c)===1))
+  for(const k of cartSteps(cart).ends.keys()){const [r,c]=k.split(',').map(Number);out.push({r,c,cart:cart.id});}
+ return out;}
+function resolvePush(cart,r,c){const S=cartSteps(cart),k=r+','+c;if(!S.ends.has(k))return null;const path=[];for(let p=k;p;p=S.par.get(p))path.unshift(p.split(',').map(Number));
+ cart.r=r;cart.c=c;let escaped=false;
+ if(tile(r,c)==='E'&&G.m.win&&G.m.win.who==='cart'){cart.gone=true;cart.escaped=true;(G.escaped=G.escaped||[]).push(cart.id);escaped=true;}
+ return {path,escaped};}
+// rail steps from a tile to the nearest Exit, ignoring units (for the AI and the sim bot)
+let RAILC=null;
+function railDist(r,c){const key=G.map.join('');if(!RAILC||RAILC.key!==key){const H=G.rows,Wd=G.cols,D=new Map(),q=[];for(let y=0;y<H;y++)for(let x=0;x<Wd;x++)if(tile(y,x)==='E'){D.set(y+','+x,0);q.push([y,x]);}
+  for(let i=0;i<q.length;i++){const [y,x]=q[i],d=D.get(y+','+x);for(const [dy,dx] of [[1,0],[-1,0],[0,1],[0,-1]]){const k=(y+dy)+','+(x+dx);if(D.has(k)||!isRail(y+dy,x+dx))continue;D.set(k,d+1);q.push([y+dy,x+dx]);}}
+  RAILC={key,D};}
+ const v=RAILC.D.get(r+','+c);return v==null?99:v;}
+/* ---------- goblin sapper (R-085, T-017) ---------- */
+// A unit with Blast Pack explodes when it falls: RULES.sapper.dmg to every unit on the 4 tiles next to it (either
+// side; it can kill, and a sapper caught in it explodes too) and the same to cracked walls there. No XP for blast kills.
+function resolveBlast(u){const n=RULES.sapper.dmg,ev=[];
+ for(const [r,c] of areaTiles('adj',u.r,u.c)){
+  if(tile(r,c)==='Z'){const R=hitWall(r,c,n);if(R)ev.push({t:'wall',r,c,n,broke:R.broke});continue;}
+  const v=unitAt(r,c);if(!v||v===u)continue;v.hp-=n;ev.push({t:'hit',u:v,n});
+  if(leaveCheck(v))ev.push(resolveLeave(v,null));else if(v.hp<=0)ev.push({t:'kill',u:v,by:null,how:'hit'});}
+ return ev;}
+/* ---------- tide (R-087, T-018) ---------- */
+// Mission data tide:[[row,turn],...]: at the start of your turn `turn`, every Tide Sand (Q) tile in `row` becomes
+// Flooded Sand (q, deep water). A walking unit standing there takes RULES.tide.dmg (it can fall) and is moved to the
+// nearest free dry tile; swimmers and flyers stay. The changed map is kept in a saved battle (G.map copy).
+function tideRows(turn){return ((G.m&&G.m.tide)||[]).filter(t=>t[1]===turn).map(t=>t[0]);}
+function resolveTide(turn){const rows=tideRows(turn);if(!rows.length)return null;const tiles=[],ev=[];
+ if(G.m&&G.map===G.m.map)G.map=G.map.slice();
+ for(const r of rows){if(r<0||r>=G.rows)continue;let row=G.map[r];for(let c=0;c<G.cols;c++)if(row[c]==='Q'){row=row.slice(0,c)+'q'+row.slice(c+1);tiles.push([r,c]);}G.map[r]=row;}
+ for(const [r,c] of tiles){const v=unitAt(r,c);if(!v||isFlyer(v)||mtOf(v)==='swim')continue;
+  v.hp-=RULES.tide.dmg;const to=freeNear(r,c);if(to){v.r=to[0];v.c=to[1];}ev.push({t:'hit',u:v,n:RULES.tide.dmg,from:[r,c],to});
+  if(leaveCheck(v))ev.push(resolveLeave(v,null));else if(v.hp<=0)ev.push({t:'kill',u:v,by:null,how:'hit'});}
+ return {rows,tiles,events:ev};}
+// the next flood still to come: {row,turn} or null (for the warning on the tiles)
+function tideNext(r){const t=((G.m&&G.m.tide)||[]).filter(x=>(x[1]>G.turn||(x[1]===G.turn&&(G.map[x[0]]||'').includes('Q')))&&(r==null||x[0]===r)).sort((a,b)=>a[1]-b[1])[0];return t?{row:t[0],turn:t[1]}:null;}
+/* ---------- ballista tiles (R-088, T-019) ---------- */
+// A unit that can fight, standing on a Ballista tile (A), may spend its action to fire it: one enemy it can see
+// 2-6 tiles away takes (ATK + RULES.ballista.mt) - (DEF + terrain), at least 1, then x3 if the target flies.
+// No counter, no double hit. Each ballista fires once per turn (G.ballista['r,c'] = turn it last fired).
+function ballistaFree(r,c){return tile(r,c)==='A'&&(!G.ballista||G.ballista[r+','+c]!==G.turn);}
+function ballistaTargets(u){if(!canFight(u)||!ballistaFree(u.r,u.c))return [];const [a,b]=RULES.ballista.rng;
+ return foesOf(u).filter(e=>visibleTo(e,u.side)&&(d=>d>=a&&d<=b)(dist(u.r,u.c,e.r,e.c))).map(e=>({r:e.r,c:e.c,u:e}));}
+function ballistaDmg(u,v){const arm=stat(v,'def')+terDef(v,v.r,v.c)+(v.defend?RULES.defend:0);
+ return Math.max(1,stat(u,'atk')+RULES.ballista.mt-Math.max(0,arm))*(isFlyer(v)?RULES.ballista.flyer:1);}
+function resolveBallista(u,v){const n=ballistaDmg(u,v),ev=[];(G.ballista=G.ballista||{})[u.r+','+u.c]=G.turn;v.hp-=n;ev.push({t:'hit',u:v,n});
+ const foe=!friendly(v.side,u.side);if(foe)gainXP(u,xpFor(u,v,false));
+ if(leaveCheck(v))ev.push(resolveLeave(v,foe?u:null));else if(v.hp<=0)ev.push({t:'kill',u:v,by:foe?u:null,how:'hit'});
+ return {n,events:ev};}
 function healRange(u,sk){return sk==='mend'?[1,2]:[1,1];}
 function healTargets(u,r,c,sk){const [a,b]=healRange(u,sk);return alliesOf(u).filter(a2=>a2.hp<a2.s.hp&&(d=>d>=a&&d<=b)(dist(r,c,a2.r,a2.c)));}
 function healAmt(u,sk){const w=W(u);return (sk==='mend'?RULES.heal.mend:(w&&w.wt==='staff'?w.mt:RULES.heal.plain))+Math.floor(stat(u,'mag')/2);}
@@ -2259,7 +2405,7 @@ function knockInfo(a,d,ar,ac){if(!has(a,'knockback'))return null;const dr=Math.s
  const blocked=isStill(d)||!inMap(nr,nc)||tcost(mtOf(d),tile(nr,nc))>=99||!!unitAt(nr,nc);return {nr,nc,blocked};}
 function canCounter(a,d,ar,ac,o){
  if(o.sk==='oath'||o.sk==='pilfer')return false;
- if(!canFight(d)||d.frozen||isStill(d))return false;
+ if(!canFight(d)||d.frozen||isStill(d)||teleOnly(d))return false;
  if(d.countered&&!d.defend&&!has(d,'riposte'))return false;
  const rg=rangeOf(d,d.r,d.c,true);if(!rg)return false;let [lo,hi]=rg;if(has(d,'riposte'))hi=Math.max(hi,2);
  const dd=dist(ar,ac,d.r,d.c);return dd>=lo&&dd<=hi;
@@ -2395,6 +2541,7 @@ function resolveKill(u,by,how){const ev=[];
  return ev;}
 async function kill(u,by,how){
  const ev=resolveKill(u,by,how);
+ if(has(u,'blast'))await blastFx(u);   // R-085
  sfx('death');parts(u.x,u.y-10,14,isUndead(u)?['#cfe8f0','#8fa8b8','#e9e4d8']:['#cfc6b0','#8f8778','#5a5245'],{spd:60,grav:40,life:700,size:3});
  tween(520,p=>u.dieT=p);
  for(const e of ev){
@@ -2406,6 +2553,11 @@ async function kill(u,by,how){
  if(u.side==='R'&&G&&!G.over&&!alive('R').some(x=>!x.ignore)&&(G.m.events||[]).some((ev,i)=>!G.fired[i]&&ev.when.rout)){G.routN=(G.routN||0)+1;await runEvents({rout:G.routN});}
  checkEnd();
 }
+async function blastFx(u){const B=resolveBlast(u);sfx('fire');shake=8;FX.push({k:'boom',x:u.x,y:u.y-16,s:56,age:0,life:560});FX.push({k:'shock',x:u.x,y:u.y,s:70,age:0,life:600});
+ parts(u.x,u.y-16,20,['#ffcf6a','#ff7a2e','#4a3a30'],{spd:110,grav:20,life:600,size:2.6});logm(`${u.name} explodes!`,'N');let bake=false;
+ for(const e of B){if(e.t==='hit')hitFx(e.u,e.n);else if(e.t==='wall'){ftext(e.c*TS+24,e.r*TS+TS*.78-48,'−'+e.n,'#ffd9cf',true);if(e.broke){bake=true;logm('The cracked wall crumbles into rubble.','N');}}}
+ if(bake)bakeTerrain();await wait(250);
+ for(const e of B){if(e.t==='leave')await leaveFx(e.u,e.m,true);else if(e.t==='kill'&&!e.u.dead)await kill(e.u,null,'hit');}}
 function freeNear(r,c){for(let rad=1;rad<4;rad++)for(let dr=-rad;dr<=rad;dr++)for(let dc=-rad;dc<=rad;dc++){if(Math.abs(dr)+Math.abs(dc)!==rad)continue;const nr=r+dr,nc=c+dc;if(inMap(nr,nc)&&tcost('foot',tile(nr,nc))<99&&!unitAt(nr,nc))return [nr,nc];}return null;}
 function giveLoot(loot,x,y,by){
  if(loot.gold){CAMP.gold+=loot.gold;G.goldWon+=loot.gold;lootPop('+'+loot.gold+' gold','Found',typeof ICONIMG!=='undefined'&&ICONIMG.gold?'gold':undefined);sfx('coin');logm(`Found ${loot.gold} gold.`,'B');}
@@ -2422,7 +2574,8 @@ async function landOn(u){
   if(u.side==='R'){if(has(u,'thief')){ch.open=true;ch.found=true;u.loot=Object.assign({},ch.loot);ftext(u.x,u.y-60,'Stolen!','#ff9a8a',true);sfx('chest');logm(`The ${u.name} grabs the treasure!`,'R');}}
   else if(u.side==='B'&&ch.found&&!ch.hintT){ch.hintT=1;ftext(u.x,u.y-60,'End turn here to open','#ffe9b0');}
  }
- if(u.side!=='R'&&tile(u.r,u.c)==='E'&&G.m.win&&(G.m.win.type==='escape'||G.m.win.type==='reach')){
+ {const w0=G.m.win;if(w0&&w0.first&&!G.firstDone&&u.side!=='R'&&u.r===w0.first.r&&u.c===w0.first.c){G.firstDone=1;ring(u.x,u.y,'#ffd36b');ftext(u.x,u.y-56,'Found it!','#ffd36b',true);sfx('rank');logm(w0.first.msg||`${u.name} reaches the goal.`,'B');toast(w0.first.msg||'Now get out!');}}   // R-084 first stage
+ if(u.side!=='R'&&tile(u.r,u.c)==='E'&&G.m.win&&(G.m.win.type==='escape'||G.m.win.type==='reach')&&(!G.m.win.first||G.firstDone)){
   const w=G.m.win;const who=w.who;
   if((who==='rowan'&&u.hero==='rowan')||(who==='civ'&&u.tag==='civ')||who==='any'){u.gone=true;u.escaped=true;G.escaped.push(u.id);ring(u.x,u.y,'#ffd36b');ftext(u.x,u.y-56,'Escaped!','#ffd36b',true);sfx('rank');logm(`${u.name} reaches safety.`,'B');}
  }
@@ -2434,6 +2587,20 @@ async function graveTick(){
  for(const gr of G.graves.slice()){const o=unitAt(gr.r,gr.c);if(o&&o.side!=='R'){G.graves=G.graves.filter(x=>x!==gr);ftext(gr.c*TS+24,gr.r*TS,'Trampled','#c9f5b0');logm(`${o.name} tramples the grave flat. It won’t rise.`,'B');continue;}
   gr.turns--;if(gr.turns<=0&&!o){G.graves=G.graves.filter(x=>x!==gr);const u=mkUnit({cls:gr.cls,lv:gr.lv,side:'R',pal:gr.pal,r:gr.r,c:gr.c,name:gr.name});u.hp=Math.ceil(u.s.hp/2);u.risen=1;G.units.push(u);parts(u.x,u.y-10,16,['#9fe0b0','#5a8a6a'],{spd:60,grav:-30,life:700});sfx('death');logm(`${u.name} rises from the mud!`,'R');await focus(u.x,u.y);await wait(300);}}
 }
+/* ---------- telegraphed area attacks (R-082): drawing side ---------- */
+async function showMark(u){const m=setMark(u);if(!m)return null;
+ if(seenByPlayer(u)||liveMarks().length){const d=SK[m.k];ftext(u.x,u.y-62,d.only?'Takes aim!':'Draws breath!','#ff9a5a',true);logm(`${u.name} marks a ${d.n} (it lands on its next turn).`,u.side==='R'?'R':'B');sfx('tick');await wait(320);}
+ return m;}
+async function fireMark(u){const m=markOf(u);if(!m)return;const d=SK[m.k],tx=m.mid[1]*TS+24,ty=m.mid[0]*TS+20;
+ ftext(u.x,u.y-62,d.n,'#f3d488',true);sfx('fire');
+ if(d.el==='fire'){FX.push({k:'glowcast',x:u.x,y:u.y-30,age:0,life:500});await wait(200);for(const [r,c] of m.tiles)parts(c*TS+24,r*TS+26,10,['#ffcf6a','#ff7a2e','#d9451f'],{spd:90,grav:-20,life:600});}
+ else await shoot('meteor',u.x,u.y-40,tx,ty,560,90);
+ FX.push({k:'boom',x:tx,y:ty+4,s:60,age:0,life:600});shake=9;
+ const R=resolveMarkFire(u);logm(`${u.name}'s ${d.n} lands.`,u.side==='R'?'R':'B');let bake=false;
+ for(const e of R.events){if(e.t==='hit')hitFx(e.u,e.n);else if(e.t==='wall'){ftext(e.c*TS+24,e.r*TS+TS*.78-48,'−'+e.n,'#ffd9cf',true);if(e.broke){bake=true;logm('The cracked wall crumbles into rubble.','N');}}else if(e.t==='burn'){burnFx(e.r,e.c);}}
+ if(bake)bakeTerrain();await wait(300);
+ for(const e of R.events){if(e.t==='leave')await leaveFx(e.u,e.m,true);else if(e.t==='kill'&&!e.u.dead)await kill(e.u,e.by,e.how);}
+ ui();}
 /* ================= SKILLS ================= */
 function areaTiles(kind,r,c){const out=[];if(kind==='cross'){for(const [dr,dc] of [[0,0],[1,0],[-1,0],[0,1],[0,-1]])out.push([r+dr,c+dc]);}
  else if(kind==='sq3'){for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++)out.push([r+dr,c+dc]);}
@@ -2442,7 +2609,9 @@ function areaTiles(kind,r,c){const out=[];if(kind==='cross'){for(const [dr,dc] o
  return out.filter(([a,b])=>inMap(a,b));}
 // valid targets for a skill from the unit's current tile: returns array of {r,c,u?}
 function skillTargets(u,k){
- const d=SK[k];if(!d||(u.uses[k]||0)<=0)return [];
+ const d=SK[k];if(k==='push')return pushTargets(u);   // R-083
+ if(k==='ballista')return ballistaTargets(u);   // R-088
+ if(!d||(u.uses[k]||0)<=0)return [];
  switch(d.tgt){
   case 'self':return [{r:u.r,c:u.c,u}];
   case 'enemy':{if(k==='pilfer')return foesOf(u).filter(e=>visibleTo(e,u.side)&&dist(e.r,e.c,u.r,u.c)===1).map(e=>({r:e.r,c:e.c,u:e}));
@@ -2489,6 +2658,14 @@ async function useSkill(u,k,t){
    for(const [r,c] of tiles){const v=unitAt(r,c);if(!v||v===u)continue;const dmg=aoeDamage(u,k,v);v.hp-=dmg;hitFx(v,dmg);if(d.el==='frost')v.frozen=2;if(d.el==='fire'){v.burned=1;if(burnAt(r,c))burnFx(r,c);}if(!friendly(v.side,u.side))gainXP(u,6);}
    await wait(300);for(const [r,c] of tiles){const v=unitAt(r,c);if(v&&leaveCheck(v)){const Lv=resolveLeave(v,friendly(v.side,u.side)?null:u);await leaveFx(v,Lv.m,true);}else if(v&&v.hp<=0)await kill(v,friendly(v.side,u.side)?null:u,d.el==='fire'?'fire':'hit');}break;}
   case 'vines':{sfx('heal');const ps3=poseSet(u);if(ps3){u.pose=ps3.wind;await wait(150);u.pose=ps3.hit;}let vi=0;for(const [r,c] of areaTiles('cross',t.r,t.c))if(!unitAt(r,c)&&tcost('foot',tile(r,c))<99){G.vines.push({r,c,turns:2});FX.push({k:'vine',x:c*TS+24,y:r*TS+38,age:-vi*90,life:900,seed:r*13+c});vi++;}setTimeout(()=>{u.pose=null;},300);gainXP(u,10);await wait(300);break;}
+  case 'ballista':{const v=t.u;if(!v||v.dead)break;if(v.x!==u.x)u.face=v.x>u.x?1:-1;sfx('clang');await shoot('bolt',u.x,u.y-30,v.x,v.y-24,360,10);   // R-088
+   const R=resolveBallista(u,v);hitFx(v,R.n);shake=6;logm(`${u.name} fires the ballista at ${v.name} for ${R.n}${isFlyer(v)?' (triple against flyers)':''}.`,u.side==='R'?'R':'B');await wait(250);
+   for(const e of R.events){if(e.t==='leave')await leaveFx(e.u,e.m,true);else if(e.t==='kill'&&!e.u.dead)await kill(e.u,e.by,e.how);}break;}
+  case 'push':{const cart=byId(t.cart);if(!cart)break;if(cart.x!==u.x)u.face=cart.x>u.x?1:-1;sfx('thud');const R=resolvePush(cart,t.r,t.c);if(!R)break;   // R-083
+   for(let i=1;i<R.path.length;i++){const [r0,c0]=R.path[i-1],[r1,c1]=R.path[i];await tween(110,p=>{cart.x=(c0+(c1-c0)*p)*TS+TS/2;cart.y=(r0+(r1-r0)*p)*TS+TS*.78;});}
+   place(cart);logm(`${u.name} pushes the ore cart ${R.path.length-1} tile${R.path.length>2?'s':''}.`,'B');
+   if(R.escaped){ring(cart.x,cart.y,'#ffd36b');ftext(cart.x,cart.y-56,'On the lift!','#ffd36b',true);sfx('rank');logm('An ore cart reaches the lift.','B');}
+   gainXP(u,6);break;}
   case 'snare':{G.traps.push({r:t.r,c:t.c,side:u.side,lv:u.lv});sfx('tick');gainXP(u,8);break;}
   case 'sanctuary':{sfx('holy');FX.push({k:'pillar',x:u.x,y:u.y,c:'holy',age:0,life:1000});FX.push({k:'shock',x:u.x,y:u.y,s:110,age:0,life:900,c:'holy'});for(const [r,c] of areaTiles('sq3',u.r,u.c)){const a=unitAt(r,c);if(a&&friendly(a.side,u.side)){const amt=Math.min(healAmt(u,'heal'),a.s.hp-a.hp);a.hp+=amt;if(amt)ftext(a.x,a.y-48,'+'+amt,'#c9f5b0');}}gainXP(u,14);await wait(400);break;}
  }
@@ -2549,6 +2726,8 @@ function checkEnd(){
  if(m.lose&&m.lose.lost){const L=m.lose.lost,n=G.units.filter(u=>u.tag===L.tag&&u.side!=='R'&&u.dead).length;if(n>=L.n)return endBattle(false,L.msg||`Too many were lost (${n}).`);}   // R-080
  if(m.lose&&m.lose.tile){const [tr,tc]=m.lose.tile;if(G.units.some(u=>u.side==='R'&&!u.dead&&!u.gone&&u.r===tr&&u.c===tc))return endBattle(false,m.lose.msg||'An enemy has seized the throne.');}   // R-081
  if(w.type==='escape'&&w.who==='civ'){const civs=G.units.filter(u=>u.tag==='civ');const dead=civs.filter(u=>u.dead).length,esc=civs.filter(u=>u.escaped).length;if(civs.length-dead<w.need)return endBattle(false,'Too many villagers were lost.');if(esc>=w.need&&civs.every(u=>u.dead||u.escaped))return endBattle(true,'The villagers are safe.');if(esc>=w.need&&!civs.some(u=>!u.dead&&!u.escaped))return endBattle(true,'The villagers are safe.');}
+ if(w.type==='escape'&&w.who==='cart'){const cs=G.units.filter(u=>u.cls==='cart'),esc=cs.filter(u=>u.escaped).length;   // R-083
+  if(esc>=w.need)return endBattle(true,w.msg||'The ore carts are on the lift.');if(cs.filter(u=>!u.dead).length<w.need)return endBattle(false,'Too many ore carts were destroyed.');}
  if((w.type==='escape'||w.type==='reach')&&w.who==='rowan'&&rowan&&rowan.escaped)return endBattle(true,w.type==='reach'?'Rowan reached the goal.':'Rowan escaped.');
  if(w.type==='catch'){const t=G.units.find(u=>u.tag===w.tag);if(t&&t.dead)return endBattle(true,`${t.name} is caught.`);if(t&&t.gone)return endBattle(false,`${t.name} got away.`);}
  if(w.type==='boss'||(w.type==='survive'&&w.boss)){const bs=G.units.filter(u=>u.boss&&u.side==='R');   // R-076: a boss who left counts as beaten; survive+boss wins either way
@@ -2603,13 +2782,18 @@ async function startSide(side){
  G.vines=G.vines.filter(v=>--v.turns>0||side!=='B');
  ui();
  if(side==='R')await graveTick();
+ if(side==='B'){const TD=resolveTide(G.turn);if(TD){bakeTerrain();sfx('frost');logm(`The tide comes in: row ${TD.rows.join(', ')} floods.`,'N');toast('The tide comes in!');   // R-087
+   for(const e of TD.events){if(e.t==='hit'){place(e.u);hitFx(e.u,e.n);logm(`${e.u.name} is caught by the tide.`,e.u.side==='R'?'R':'B');}}
+   for(const e of TD.events){if(e.t==='leave')await leaveFx(e.u,e.m,true);else if(e.t==='kill'&&!e.u.dead)await kill(e.u,null,'hit');}if(G.over)return;
+   const nx=tideNext();if(nx&&nx.turn===G.turn+1)logm(`Next turn the tide floods row ${nx.row}.`,'N');}
+  else{const nx=tideNext();if(nx&&nx.turn===G.turn+1){logm(`Next turn the tide floods row ${nx.row}.`,'N');toast('The tide will rise next turn');}}}
  if(side==='B'){sfx('turn');banner(G.m.win&&G.m.win.type==='survive'?`Turn ${G.turn} of ${G.m.win.turns}`:`Turn ${G.turn}`,'Your move','B');await runEvents({turn:G.turn,side:'B'});const r=alive('B').find(u=>u.hero==='rowan')||alive('B')[0];if(r)focus(r.x,r.y);saveBattle();}
  else if(side==='R'){banner(`Turn ${G.turn}`,'The enemy moves','R');await runEvents({turn:G.turn,side:'R'});}
  else banner(`Turn ${G.turn}`,'Allies move','B');
 }
 /* ================= AI ================= */
 const VAL={lord:3};
-function aiVal(e){if(e.hero==='rowan')return 3;if(e.tag==='civ')return 1.6;if(famOf(e)==='healer'||famOf(e)==='mage')return 1.35;return 1;}
+function aiVal(e){if(e.hero==='rowan')return 3;if(e.cls==='cart')return 1.6;if(e.tag==='civ')return 1.6;if(famOf(e)==='healer'||famOf(e)==='mage')return 1.35;return 1;}
 function exitTiles(){const out=[];for(let r=0;r<G.rows;r++)for(let c=0;c<G.cols;c++)if(tile(r,c)==='E')out.push([r,c]);return out;}
 function edgeDist(r,c){return Math.min(r,c,G.rows-1-r,G.cols-1-c);}
 // how far a loot-carrying raider is from getting away: it must walk back to its own start tile
@@ -2630,7 +2814,7 @@ function plan(u){
  const awake=u.ai!=='guard'||foes.some(e=>dist(e.r,e.c,u.r,u.c)<=5)||u.woke;if(u.ai==='guard'&&awake)u.woke=1;
  let best=null;const consider=p=>{if(!best||p.score>best.score)best=p;};
  const WD=foes.length&&!isFlyer(u)?walkDist(u,foes):null;
- const exits=exitTiles();
+ const exits=exitTiles();let FW=null;   // FW: walking steps to the goal in two-stage missions (R-084)
  for(const k of R.ends){
   const [r,c]=k.split(',').map(Number),moved=!(r===u.r&&c===u.c);
   if((u.ai==='stay'||!awake)&&moved)continue;
@@ -2641,8 +2825,10 @@ function plan(u){
    if(u.loot){const h=raiderHome(u,r,c);pos+=20-h*3;if(h===0)pos+=40;}
    else{const ch=G.chests.filter(x=>!x.open&&x.kind!=='hidden');if(ch.length){const dc=Math.min(...ch.map(x=>dist(r,c,x.r,x.c)));pos+=25-dc*2.5;if(dc===0)pos+=30;}else pos-=dmin;}
    consider({r,c,score:pos});continue;}
-  if(u.ai==='flee'){const de=exits.length?Math.min(...exits.map(([a,b])=>dist(r,c,a,b))):edgeDist(r,c);pos+=30-de*3+(de===0?60:0)-foes.filter(e=>dist(e.r,e.c,r,c)<=1).length*4;consider({r,c,score:pos});continue;}
+  if(u.ai==='flee'){const W0=G.m.win,first=W0&&W0.first&&!G.firstDone&&u.side!=='R',goal=first?[[W0.first.r,W0.first.c]]:exits;const useW=!!(W0&&W0.first&&u.side!=='R'&&goal.length);if(useW&&!FW)FW=walkDist(u,goal.map(([a,b])=>({r:a,c:b})));const de=useW&&FW(r,c)<99?FW(r,c):goal.length?Math.min(...goal.map(([a,b])=>dist(r,c,a,b))):edgeDist(r,c);/* R-084: the first goal before the exit */pos+=30-de*3+(de===0?60:0)-foes.filter(e=>dist(e.r,e.c,r,c)<=1).length*4;consider({r,c,score:pos});continue;}
   if(famOf(u)==='civ'||!canFight(u)){let da=99;for(const a of allies)if(canFight(a))da=Math.min(da,dist(r,c,a.r,a.c));pos+=Math.min(dmin,6)*1.5-da*.5-foes.filter(e=>dist(e.r,e.c,r,c)<=movOf(e)+1).length*1.5;consider({r,c,score:pos});continue;}
+  if(tile(r,c)==='A'&&ballistaFree(r,c)&&canFight(u)&&foes.some(e=>isFlyer(e)&&dist(e.r,e.c,r,c)<=RULES.ballista.rng[1]+2))pos+=3;   // R-088 man the ballistae
+  if(u.side!=='R'&&G.m.win&&G.m.win.who==='cart'){const cs=live().filter(x=>isCart(x)&&x.side===u.side);if(cs.length)pos-=.3*Math.min(...cs.map(x=>dist(r,c,x.r,x.c)));}   // R-083 stay near the carts
   if(u.ai==='hunt'){const ro=foes.find(e=>e.hero==='rowan');if(ro)pos-=dist(r,c,ro.r,ro.c)*1.4;else pos-=dmin*1.1;}
   else if(famOf(u)==='healer'){let da=99;for(const a of allies)da=Math.min(da,dist(r,c,a.r,a.c));pos-=Math.max(0,2-dmin)*3+da*.6;}
   else if(frag)pos-=Math.abs(dmin-rmax)*1.1;
@@ -2658,6 +2844,12 @@ function plan(u){
  }
  return best;
 }
+// R-083: the best cart push this unit can make this turn (move next to a cart, then push it nearer the exit)
+function cartPlan(u){if(!canPush(u))return null;const R=reachOf(u),sv=[u.r,u.c];let best=null;
+ for(const k of R.ends){const [r,c]=k.split(',').map(Number);if(unitAt(r,c)&&!(r===sv[0]&&c===sv[1]))continue;u.r=r;u.c=c;
+  for(const t of pushTargets(u)){const cart=byId(t.cart),g=railDist(cart.r,cart.c)-railDist(t.r,t.c)-dist(r,c,sv[0],sv[1])*.01;if(g>0&&(!best||g>best.g))best={r,c,t,g};}}
+ u.r=sv[0];u.c=sv[1];return best;}
+function bestBolt(u,bt){let bb=null,bs=-1;for(const t of bt){const v=t.u,n=ballistaDmg(u,v),sc=Math.min(n,v.hp)*aiVal(v)+(n>=v.hp?12*aiVal(v):0);if(sc>bs){bs=sc;bb=t;}}return bb;}   // R-088
 async function aiSide(side){
  G.busy=true;ui();await wait(500);
  const order=['archer','mage','healer','stealth','cav','flyer','inf','spear','heavy','beast','undead','civ'];
@@ -2665,7 +2857,15 @@ async function aiSide(side){
  for(const u of mine){
   if(G.over)return;if(u.dead||u.gone)continue;
   if(u.frozen||isStill(u)){u.done=true;continue;}
-  const p=plan(u);if(!p){u.done=true;continue;}
+  if(u.side!=='R'&&G.m.win&&G.m.win.who==='cart'){const cp=cartPlan(u);if(cp){   // R-083: the AI (allies, sim bot) pushes a cart toward the exit when it can
+    if(cp.r!==u.r||cp.c!==u.c){const R0=reachOf(u);u.moved=true;const res=await walk(u,pathTo(R0,cp.r,cp.c));if(u.dead||G.over)continue;await landOn(u);if(G.over)return;if(res.stop){u.done=true;clearSel();ui();continue;}}
+    await useSkill(u,'push',cp.t);u.done=true;clearSel();ui();if(checkEnd())return;continue;}}
+  const tk=teleSk(u);let fired=false;   // R-082: fire last turn's mark first, then (unless resting) mark the next
+  if(tk&&markOf(u)){fired=true;G.sel=u.id;G.phase='ai';ui();await focus(u.x,u.y-20);await fireMark(u);clearSel();if(G.over||checkEnd())return;if(u.dead||u.gone)continue;}
+  const reMark=!!tk&&(!fired||SK[tk].every===1);
+  if(tk&&SK[tk].only){if(reMark)await showMark(u);u.done=true;clearSel();ui();continue;}
+  {const bt0=ballistaTargets(u);if(bt0.length){G.sel=u.id;G.phase='ai';ui();await focus(u.x,u.y-20);await useSkill(u,'ballista',bestBolt(u,bt0));if(G.over)return;if(reMark&&!u.dead)await showMark(u);if(!u.dead)u.done=true;clearSel();ui();if(checkEnd())return;continue;}}   // R-088 already on a loaded ballista: fire it
+  const p=plan(u);if(!p){if(reMark)await showMark(u);u.done=true;continue;}
   const acts=p.target||p.heal||p.r!==u.r||p.c!==u.c;
   const vis=seenByPlayer(u);
   if(acts&&vis){G.sel=u.id;G.phase='ai';ui();await focus(u.x,u.y-20);}
@@ -2673,8 +2873,11 @@ async function aiSide(side){
    if(u.ai==='thief'&&u.loot&&raiderHome(u,u.r,u.c)===0){u.gone=true;ring(u.x,u.y,'#ff9a8a');logm(`The ${u.name} escapes with the loot!`,'R');toast(`A goblin escaped with treasure!`);u.done=true;clearSel();continue;}
    if(u.ai==='flee'&&tile(u.r,u.c)==='E'){u.gone=true;ring(u.x,u.y,'#ff9a8a');logm(`${u.name} slips away!`,'R');checkEnd();if(G.over)return;continue;}
    if(res.stop){u.done=true;clearSel();ui();continue;}}
-  if(p.target&&!p.target.dead&&!u.dead){if(seenByPlayer(u)||seenByPlayer(p.target)){G.target=p.target.id;ui();await wait(260);}await strike(u,p.target);if(G.over)return;}
+  const bt=!u.dead?ballistaTargets(u):[];   // R-088: on a free ballista, fire it at the best target instead
+  if(bt.length){await useSkill(u,'ballista',bestBolt(u,bt));if(G.over)return;}
+  else if(p.target&&!p.target.dead&&!u.dead){if(seenByPlayer(u)||seenByPlayer(p.target)){G.target=p.target.id;ui();await wait(260);}await strike(u,p.target);if(G.over)return;}
   else if(p.heal&&!p.heal.dead)await useSkill(u,'heal',{u:p.heal});
+  if(reMark&&!u.dead&&!u.gone&&!G.over)await showMark(u);
   if(!u.dead)u.done=true;clearSel();ui();
   if(checkEnd())return;
   if(acts&&vis)await wait(120);
@@ -2724,6 +2927,9 @@ function draw(now){
  for(const gr of G.graves)drawGrave(g,gr,now);
  for(const tr of G.traps)if(tr.side==='B')drawTrap(g,tr);
  if(G.started&&!G.over)drawHighlights(now);
+ {const nx=G.started&&!G.over&&tideNext();if(nx&&nx.turn<=G.turn+1){const a=.18+.1*Math.sin(now/300);for(let c=0;c<G.cols;c++)if(tile(nx.row,c)==='Q')fillT(nx.row,c,`rgba(80,170,230,${a.toFixed(3)})`,'rgba(150,215,255,.8)');}}   // R-087 sand the tide floods next turn
+ {const ms=liveMarks();if(ms.length){const a=.3+.14*Math.sin(now/220);g.save();g.lineWidth=2.5;for(const m of ms){for(const [r,c] of m.tiles)fillT(r,c,`rgba(255,70,30,${a.toFixed(3)})`,'#ff7a3a');
+  const x=m.mid[1]*TS+TS/2,y=m.mid[0]*TS+TS/2;g.strokeStyle='rgba(255,235,200,.9)';g.beginPath();g.arc(x,y,12,0,7);g.moveTo(x-18,y);g.lineTo(x-6,y);g.moveTo(x+6,y);g.lineTo(x+18,y);g.moveTo(x,y-18);g.lineTo(x,y-6);g.moveTo(x,y+6);g.lineTo(x,y+18);g.stroke();}g.restore();}}   // R-082 marked areas glow (with a target mark) until they are hit
  const items=[];
  for(const d of DECOR)if(d.x1>X0&&d.x0<X1&&d.y1>Y0&&d.y0<Y1)items.push(d);
  for(const ch of G.chests)if(!ch.open||ch.found)items.push({y:ch.r*TS+30,draw:(gg,t)=>drawChest(gg,ch,t)});
@@ -2942,6 +3148,8 @@ function renderMenu(C){
   if(C.heals.length)items.push(['heal','Heal','heal']);
   const sks=u.sk.filter(k=>SK[k]&&SK[k].kind==='active'&&k!=='heal'&&!(SK[k].tgt==='enemy'&&k!=='pilfer'&&k!=='leap'&&u.moved&&false));
   for(const k of sks){const n=skillTargets(u,k).length;if(k==='haul'&&u.carrying)items.push(['sk:'+k,'Set down','sk','',n?0:1]);else items.push(['sk:'+k,SK[k].n,n?'sk':'sk off',SK[k].uses>=99?'':(u.uses[k]||0)+'/'+SK[k].uses,0]);}
+  if(pushTargets(u).length)items.push(['sk:push','Push Cart','sk','',0]);   // R-083 next to an ore cart
+  if(tile(u.r,u.c)==='A'&&canFight(u)){const n=ballistaTargets(u).length;items.push(['sk:ballista','Fire Ballista',n?'sk':'sk off',ballistaFree(u.r,u.c)?'':'fired',0]);}   // R-088 on a ballista tile
   const usable=Object.keys(BAG.items).filter(k=>IT[k].type==='use');if(usable.length&&u.side==='B')items.push(['items','Item','item']);
   if(!u.moved)items.push(['def','Defend','def']);
  }else if(menuMode==='items'){for(const k of Object.keys(BAG.items).filter(k=>IT[k].type==='use'))items.push(['use:'+k,IT[k].n,'item','×'+BAG.items[k]]);items.push(['back','Back','def']);}
@@ -3181,6 +3389,7 @@ function buildBattle(m,recs){
 function goalLines(m){const w=m.win||{},lose=['Rowan falls'];
  for(const tg of ((m.lose||{}).protect||[])){const us=G.units.filter(x=>(x.tag===tg||x.hero===tg)&&x.side!=='R');const nm=[...new Set(us.map(u=>u.name))];
   if(tg==='civ'||nm.length>1)lose.push('Any villager is lost');else if(nm.length)lose.push(nm[0]+' is lost');}
+ if(w.type==='escape'&&w.who==='cart'){const n=G.units.filter(u=>u.cls==='cart').length;if(n)lose.push(`${n-w.need+1} ore carts are destroyed`);}   // R-083
  if(w.type==='escape'&&w.who==='civ'){const n=G.units.filter(u=>u.tag==='civ'&&u.side!=='R').length;if(n&&w.need)lose.push(`${n-w.need+1} or more villagers are lost`);}
  return {win:m.obj||'',lose};}
 function showGoal(m){return new Promise(res=>{const L=goalLines(m),el=document.createElement('div');el.id='goal';el.setAttribute('role','dialog');
@@ -3223,11 +3432,28 @@ async function battleResult(won,msg){
 const SCENE={on:false,mode:null,key:null,hover:null,wbase:null,wk:0};
 const tcv=$('#tcv'),tg=tcv.getContext('2d'),wcv=$('#wcv'),wg=wcv.getContext('2d');
 const SHOPS={
- hollowmere:['herb','tonic','torch','key','rustysword','ironsword','ironlance','shortbow','knife','logclub','healstaff','leather','clothes'],
+ hollowmere:['herb','tonic','torch','key','holywater','clothes','robe','healstaff','embertome','frosttome',
+  'rustysword','knife','logclub','leather','ironsword','ironlance','shortbow','ironbow','ironring','kris','ironmace','chain'],
  camp:['herb','tonic','torch','key','holywater'],
  tower:['herb','tonic','holywater','torch','embertome','frosttome','robe'],
- brackenford:['herb','tonic','elixir','holywater','torch','key','ironsword','steelsword','ironlance','steellance','horseslayer','shortbow','ironbow','longbow','lightxbow','embertome','frosttome','lighttome','healstaff','mendstaff','knife','kris','logclub','ironmace','leather','chain','plate','robe','silkrobe','ironring','embercharm','powerband','boots','lucky']
+ brackenford:['herb','tonic','elixir','holywater','torch','key','embertome','frosttome','lighttome','healstaff','mendstaff','robe','silkrobe','embercharm','lucky',
+  'ironsword','steelsword','ironlance','steellance','horseslayer','shortbow','ironbow','longbow','lightxbow','knife','kris','logclub','ironmace','leather','chain','plate','ironring','powerband','boots']
 };
+// Stock grows with the story (owner, 2026-11-20): item -> mission id that must be done before it is sold here. Items not listed are sold from the first visit.
+const SHOP_UNLOCK={
+ hollowmere:{tonic:'m2',key:'m2',healstaff:'m2',robe:'m2',ironsword:'m2',ironlance:'m2',shortbow:'m2',
+  embertome:'m3',ironbow:'m3',ironring:'m3',
+  holywater:'m4',frosttome:'m4',kris:'m4',ironmace:'m4',chain:'m4'},
+ brackenford:{plate:'m9',horseslayer:'m9',longbow:'m9',boots:'m9',lucky:'m9',lighttome:'m9'}
+};
+// Smithy sells metal and martial gear; the general store sells everything else (owner, 2026-11-20)
+const SMITH_WT=['sword','lance','bow','xbow','club','dagger'],SMITH_GEAR=['leather','chain','plate','ironring','powerband'];
+function isSmithItem(k){const it=IT[k];return (it.type==='weapon'&&SMITH_WT.includes(it.wt))||SMITH_GEAR.includes(k);}
+function shopUnlocked(key,k){const m=(SHOP_UNLOCK[key]||{})[k];return !m||!!CAMP.done[m];}
+function townHasSmith(key){return !!(TOWNS[key]&&TOWNS[key].spots.some(s=>s.id==='smith'));}
+function shopStock(key,smith){const all=(SHOPS[key]||SHOPS.camp).filter(k=>shopUnlocked(key,k));
+ if(smith)return all.filter(isSmithItem);return townHasSmith(key)?all.filter(k=>!isSmithItem(k)):all;}
+function shopIsNew(key,k){return !!(SHOP_UNLOCK[key]||{})[k]&&!CAMP.seen['shop_'+key+'_'+k];}
 const RUMORS=[
  'They say the old Fallowmere stables have a loose board with something shiny under it. Probably nails.',
  'A cat sleeps in the oddest places. Folk swear petting one before a fight brings luck.',
@@ -3253,8 +3479,13 @@ function townLayout(){const w=tcv.clientWidth,h=tcv.clientHeight,d=Math.min(wind
  x0=Math.max(0,x0);x1=Math.min(1000,x1);y0=Math.max(0,y0-40);y1=Math.min(620,y1);const top=50,bot=$('#tbar').offsetHeight||0,ah=h-top-bot;
  let s=Math.max(w/1000,h/620);s=Math.min(s,w/(x1-x0),ah/(y1-y0));
  const cx=(x0+x1)/2,cy=(y0+y1)/2;let ox=w/2-cx*s,oy=top+ah/2-cy*s;ox=1000*s>=w?clamp(ox,w-1000*s,0):(w-1000*s)/2;oy=620*s>=h?clamp(oy,h-620*s,0):(h-620*s)/2;return {w,h,d,s,ox,oy};}
+// labels stay inside what the phone really shows (owner, 2026-11-20: Fallowmere's "Set Out" was cut off on the right in the iPhone app,
+// where the page can run ~45 pt past the visible edge on the home-bar side). TZ_VIS = visible painting x range for tzPlate().
+var TZ_VIS=null,TZ_SAFE=null;
+function tzVis(L){if(TZ_SAFE==null){const p=document.createElement('div');p.style.cssText='position:fixed;left:0;bottom:0;width:1px;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none';document.body.appendChild(p);TZ_SAFE=p.offsetHeight||0;p.remove();}
+ const rot=document.documentElement.classList.contains('rot'),mR=rot?Math.max(56,TZ_SAFE+24):12,mL=12;TZ_VIS=[(mL-L.ox)/L.s,(L.w-mR-L.ox)/L.s];}
 function drawScene(now){
- if(SCENE.mode==='town'){const L=townLayout();tg.setTransform(L.d,0,0,L.d,0,0);tg.fillStyle='#0b120f';tg.fillRect(0,0,L.w,L.h);try{tg.setTransform(L.d*L.s,0,0,L.d*L.s,L.d*L.ox,L.d*L.oy);drawTown(tg,SCENE.key,now,SCENE.hover);}catch(e){console.error(e);SCENE.on=false;}}
+ if(SCENE.mode==='town'){const L=townLayout();tg.setTransform(L.d,0,0,L.d,0,0);tg.fillStyle='#0b120f';tg.fillRect(0,0,L.w,L.h);try{tzVis(L);tg.setTransform(L.d*L.s,0,0,L.d*L.s,L.d*L.ox,L.d*L.oy);drawTown(tg,SCENE.key,now,SCENE.hover);}catch(e){console.error(e);SCENE.on=false;}}
  else if(SCENE.mode==='world')drawWorld(now);
 }
 function spotAt(x,y){const L=townLayout();const vx=(x-L.ox)/L.s,vy=(y-L.oy)/L.s;let best=null,bd=1e9;for(const s of TOWNS[SCENE.key].spots){const d=Math.hypot(s.x-vx,s.y-vy);if(d<s.r&&d<bd){bd=d;best=s;}}return best;}
@@ -3424,9 +3655,9 @@ function gearLine(r){return ['w','a','x'].map(s=>`<span class="gq"><b>${{w:'Weap
 function partyGear(){return `<div class="list">${CAMP.roster.filter(x=>!x.guest).map(r=>`<div class="li" style="cursor:default"><canvas width="96" height="96" data-rec="${r.uid}"></canvas><span class="nm">${esc(recName(r))} <span class="lv">Lv ${r.lv} · ${esc(CLS[r.cls].n)}</span></span><span class="ds">${gearLine(r)}</span><span class="rt"></span></div>`).join('')}</div>`;}
 
 function openShop(key,filter){
- let tab='buy',pick=null;const stock=(SHOPS[key]||SHOPS.camp).filter(k=>!filter||['weapon','armor','acc'].includes(IT[k].type));
+ let tab='buy',pick=null;const stock=shopStock(key,!!filter);if(!CAMP.seen)CAMP.seen={};const fresh=new Set(stock.filter(k=>shopIsNew(key,k)));for(const k of fresh)CAMP.seen['shop_'+key+'_'+k]=1;if(fresh.size)saveCamp();
  const sellPrice=k=>Math.floor(IT[k].price/2);
- const head=()=>`<div class="eyebrow">${esc(TOWNS[SCENE.key].name)}</div><h2>${filter?'Smithy':'Shop'}</h2>`;
+ const head=()=>`<div class="eyebrow">${esc(TOWNS[SCENE.key].name)}</div><h2>${filter?'Smithy':(townHasSmith(key)?'General Store':'Supplies')}</h2>`;
  const goldChip=()=>`<div class="gold" style="margin-left:auto"><i></i><span>${CAMP.gold}</span></div>`;
  const render=()=>{if(pick)return detail();
   const keep=k=>!(IT[k].price>0);   // keepsake: starting gear with no shop price (2026-11-16, owner: shown, never sold)
@@ -3434,7 +3665,7 @@ function openShop(key,filter){
   const tabs=`<div class="row"><button class="b ${tab==='buy'?'gold':''}" data-t="buy">Buy</button><button class="b ${tab==='sell'?'gold':''}" data-t="sell">Sell</button><button class="b ${tab==='party'?'gold':''}" data-t="party">Party gear</button>${goldChip()}</div>`;
   const body=tab==='party'?partyGear():`<p class="muted" style="font-size:12.5px">Tap an item to compare it on your party, then confirm.</p><div class="list">${list.length?list.map(k=>{const it=IT[k],price=tab==='buy'?it.price:sellPrice(k),ks=tab==='sell'&&keep(k);const own=BAG.items[k]||0;const eq=CAMP.roster.filter(r=>r.eq.w===k||r.eq.a===k||r.eq.x===k).length;
    const users=SLOT_OF[it.type]?CAMP.roster.filter(r=>!r.guest&&canWear(r,k)).length:-1;
-   return `<button class="li" data-k="${k}"><canvas width="96" height="96" data-item="${k}"></canvas><span class="nm">${esc(it.n)}</span><span class="ds">${esc(itemDesc(k))}${own?` · have ${own}`:''}${eq?` · ${eq} equipped`:''}${users===0?' · <b style="color:var(--bad)">nobody can use</b>':''}</span><span class="rt" ${tab==='buy'&&CAMP.gold<price?'style="opacity:.45"':''}>${ks?'<span class="muted" style="font-size:12px">Keepsake</span>':price+'g'}</span></button>`;}).join(''):'<p class="muted">Nothing to sell.</p>'}</div>`;
+   return `<button class="li" data-k="${k}"><canvas width="96" height="96" data-item="${k}"></canvas><span class="nm">${esc(it.n)}${tab==='buy'&&fresh.has(k)?' <b style="color:var(--gold,#e8b84a);font-size:11px">NEW</b>':''}</span><span class="ds">${esc(itemDesc(k))}${own?` · have ${own}`:''}${eq?` · ${eq} equipped`:''}${users===0?' · <b style="color:var(--bad)">nobody can use</b>':''}</span><span class="rt" ${tab==='buy'&&CAMP.gold<price?'style="opacity:.45"':''}>${ks?'<span class="muted" style="font-size:12px">Keepsake</span>':price+'g'}</span></button>`;}).join(''):'<p class="muted">Nothing to sell.</p>'}</div>`;
   show(`${head()}${tabs}${body}<div class="row"><button class="b gold" id="spDone">Done</button></div>`,true);itemIcons();miniPortraits();
   for(const b of scr.querySelectorAll('[data-t]'))b.onclick=()=>{tab=b.dataset.t;sfx('tick');render();};
   for(const b of scr.querySelectorAll('.li[data-k]'))b.onclick=()=>{pick=b.dataset.k;sfx('tick');render();};
@@ -3478,6 +3709,8 @@ function skillReach(u,k){const d=SK[k];let a=1,b=1,txt='';
   case 'carry':txt=u.carrying?'An empty tile next to the user':'An ally next to the user (not mounted or heavy)';break;
   case 'tile':[a,b]=d.rng||[1,3];txt='A tile'+(d.area?', hitting '+AREA_TXT[d.area]:'');break;
   case 'fallen':txt='A fallen ally returns to a tile next to the user';break;
+  case 'push':return {tiles:pushTargets(u).map(t=>[t.r,t.c]),txt:'A rail tile the cart can roll to (up to 4)'};   // R-083
+  case 'ballista':[a,b]=RULES.ballista.rng;txt='An enemy (triple damage to flyers)';break;   // R-088
  }
  return {tiles:ringTiles(u,a,b),txt:`${txt} · range ${a===b?a:a+'–'+b}`};}
 function skillStatus(u,k){const d=SK[k];if(d.uses<99&&(u.uses[k]||0)<=0)return 'No uses left this battle.';
@@ -5054,8 +5287,8 @@ MISSIONS.push({
  ],
  enemies:[
   ['ogre',11,6,2,{pal:'gob',ai:'guard',boss:1,name:'Zagra',tag:'zagra',gold:300}],
-  ['xbowman',10,4,6,{pal:'gob',ai:'stay',plan:'catapult'}],
-  ['xbowman',10,7,6,{pal:'gob',ai:'stay',plan:'catapult'}],
+  ['xbowman',10,4,6,{pal:'gob',ai:'stay',name:'Ogre Catapult',plan:'catapult',sk:['barrage']}],
+  ['xbowman',10,7,6,{pal:'gob',ai:'stay',name:'Ogre Catapult',plan:'catapult',sk:['barrage']}],
   ['ogre',9,6,17,{pal:'gob',ai:'aggr'}],
   ['ogre',9,5,17,{pal:'gob',ai:'aggr'}],
   ['ogre',9,7,17,{pal:'gob',ai:'aggr'}],
@@ -5115,16 +5348,16 @@ MISSIONS.push({
 MISSIONS.push({
  id:'m15',num:'15',name:"The Deep Roads",act:2,style:'plains',
  brief:"Goblins hold the Deep Roads under Deepforge. Get the ore up the lift, and find out who is knocking behind the walls.",
- obj:"Reach the lift with Rowan.",
+ obj:"Push two of the three ore carts onto the lift (top right). Rowan must live.",
  map:[
   '######################',
   '#....#####...Z..#####E',
   '#YYYYYYYYYYYYYYYYYYYYE',
-  '#....#...#.......#...#',
-  '#.......##..VV...#...#',
+  '#....#...#.......#.Y.#',
+  '#.......##..VV...#.Y.#',
   '###Z####...VVVV..##Z##',
-  '#......#..VVVVV.....##',
-  '#..YYYYYYYYYYYYYYYY..#',
+  '#......#..VVVVV....Y##',
+  '#..YYYYYYYYYYYYYYYYY.#',
   '#..#......VVV...#.....',
   '#..#..##......###..Z..',
   '#.....##..#.........##',
@@ -5133,12 +5366,16 @@ MISSIONS.push({
  ],
  deploy:[[1,1],[1,2],[1,3],[3,1],[3,2],[3,3],[4,1],[4,2]],
  forced:["rowan"],
- guests:[],
+ guests:[
+  {cls:'cart',lv:1,name:'Ore Cart',r:2,c:2,side:'B',tag:'cart',still:true},
+  {cls:'cart',lv:1,name:'Ore Cart',r:2,c:4,side:'B',tag:'cart',still:true},
+  {cls:'cart',lv:1,name:'Ore Cart',r:7,c:4,side:'B',tag:'cart',still:true}
+ ],
  enemies:[
-  ['goblin',9,6,9,{pal:'gob',ai:'aggr',plan:'sapper'}],
-  ['goblin',9,8,14,{pal:'gob',ai:'aggr',plan:'sapper'}],
-  ['goblin',9,3,12,{pal:'gob',ai:'aggr',plan:'sapper'}],
-  ['goblin',9,10,12,{pal:'gob',ai:'aggr',plan:'sapper'}],
+  ['goblin',9,6,9,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
+  ['goblin',9,8,14,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
+  ['goblin',9,3,12,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
+  ['goblin',9,10,12,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
   ['goblin',9,6,17,{pal:'gob',ai:'aggr'}],
   ['goblin',9,9,10,{pal:'gob',ai:'aggr'}],
   ['goblin',9,1,11,{pal:'gob',ai:'guard'}],
@@ -5150,7 +5387,7 @@ MISSIONS.push({
   {r:6,c:2,kind:'wood',loot:{gold:150}},
   {r:3,c:20,kind:'wood',loot:{item:'tonic'}}
  ],
- win:{type:'reach',who:'rowan'},
+ win:{type:'escape',who:'cart',need:2,msg:'The ore is on the lift!'},
  events:[
   {when:{start:1},scene:[
    {w:'brom',x:'Stand beside a cart and give it a shove. Cracked walls come down if you hit them hard enough. So does a goblin.'},
@@ -5219,8 +5456,8 @@ MISSIONS.push({
   ['goblinthief',10,8,17,{pal:'gob',ai:'thief'}],
   ['goblinthief',10,11,3,{pal:'gob',ai:'thief'}],
   ['goblinthief',10,6,18,{pal:'gob',ai:'thief'}],
-  ['goblin',10,7,10,{pal:'gob',ai:'aggr',plan:'sapper'}],
-  ['goblin',10,9,13,{pal:'gob',ai:'aggr',plan:'sapper'}],
+  ['goblin',10,7,10,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
+  ['goblin',10,9,13,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
   ['goblinarcher',10,4,16,{pal:'gob',ai:'guard'}],
   ['goblinarcher',10,10,18,{pal:'gob',ai:'guard'}]
  ],
@@ -5232,7 +5469,7 @@ MISSIONS.push({
   {r:11,c:11,kind:'wood',loot:{gold:200}},
   {r:5,c:11,kind:'iron',loot:{gold:500}}
  ],
- win:{type:'reach',who:'rowan'},
+ win:{type:'reach',who:'rowan',first:{r:5,c:11,msg:'The Golden Gear! Now get Rowan to the exit.'}},
  events:[
   {when:{start:1},scene:[
    {w:'fizzwick',x:'Goblin raiders! They’ll grab every chest and run! Get to the vault first, then out. Bring shiny things.'}
@@ -5340,6 +5577,7 @@ MISSIONS.push({
  id:'m17',num:'17',name:"The Shipwreck Coast",act:2,style:'plains',
  brief:"A Jade Isles ship lies broken on the Saltreach sands. The tide is turning, and the drowned are crawling out of the surf.",
  obj:"Get 4 survivors up the cliff path. Rowan must live.",
+ tide:[[10,4],[9,6],[8,8],[7,10]],
  map:[
   'MMMMMMMHH=EHHMMMMMMMMM',
   'MMMHH...H=.H..HHMMMMMM',
@@ -5367,10 +5605,10 @@ MISSIONS.push({
   {cls:'duelist',lv:12,name:'Jin',r:7,c:12,side:'G',tag:'jin'}
  ],
  enemies:[
-  ['ghoul',10,10,2,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],
-  ['ghoul',10,10,9,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],
-  ['ghoul',10,10,15,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],
-  ['ghoul',10,10,20,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],
+  ['ghoul',10,10,2,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],
+  ['ghoul',10,10,9,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],
+  ['ghoul',10,10,15,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],
+  ['ghoul',10,10,20,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],
   ['skelarcher',10,3,19,{pal:'hollow',ai:'guard'}],
   ['skelarcher',10,2,2,{pal:'hollow',ai:'guard'}]
  ],
@@ -5385,17 +5623,17 @@ MISSIONS.push({
    {w:'maelis',x:'The tide comes up a row at a time. Watch the sand darken. Do not be standing on it when the sea arrives.'}
   ]},
   {when:{turn:2},scene:[
-  ],spawn:[['ghoul',10,10,13,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],['ghoul',10,10,1,{pal:'hollow',ai:'aggr',plan:'seaghoul'}]]},
+  ],spawn:[['ghoul',10,11,13,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],['ghoul',10,11,1,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}]]},
   {when:{turn:3},scene:[
-  ],spawn:[['ghoul',10,10,18,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],['ghoul',10,10,6,{pal:'hollow',ai:'aggr',plan:'seaghoul'}]]},
+  ],spawn:[['ghoul',10,11,18,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],['ghoul',10,11,6,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}]]},
   {when:{turn:4},scene:[
    {w:'narr',x:'The first row of sand vanishes under grey water.'},
    {w:'elowen',x:'Faster! Gorm, carry whoever can’t walk!'}
-  ],spawn:[['ghoul',10,10,2,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],['ghoul',10,10,11,{pal:'hollow',ai:'aggr',plan:'seaghoul'}]]},
+  ],spawn:[['ghoul',10,11,2,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],['ghoul',10,11,11,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}]]},
   {when:{turn:5},scene:[
-  ],spawn:[['ghoul',10,10,7,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],['ghoul',10,10,16,{pal:'hollow',ai:'aggr',plan:'seaghoul'}]]},
+  ],spawn:[['ghoul',10,11,7,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],['ghoul',10,11,16,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}]]},
   {when:{turn:6},scene:[
-  ],spawn:[['ghoul',10,10,12,{pal:'hollow',ai:'aggr',plan:'seaghoul'}],['ghoul',10,10,0,{pal:'hollow',ai:'aggr',plan:'seaghoul'}]]},
+  ],spawn:[['ghoul',10,11,12,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],['ghoul',10,11,0,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}]]},
   {when:{dead:'jin'},scene:[
    {w:'jin',x:'My lord... I have not... finished...'}
   ]}
@@ -5724,7 +5962,7 @@ MISSIONS.push({
  forced:["rowan"],
  guests:[],
  enemies:[
-  ['gryphonrider',16,0,10,{pal:'R',ai:'aggr',boss:1,name:'Skarn',tag:'skarn',leave:0.5,leaveMsg:'Skarn shrieks and wheels away into the dark.',plan:'wyrm'}],
+  ['gryphonrider',16,0,10,{pal:'R',ai:'aggr',boss:1,name:'Skarn',tag:'skarn',leave:0.5,leaveMsg:'Skarn shrieks and wheels away into the dark.',plan:'wyrm',sk:['breath']}],
   ['gryphonrider',12,1,3,{pal:'R',ai:'aggr',plan:'wyvern'}],
   ['gryphonrider',12,1,18,{pal:'R',ai:'aggr',plan:'wyvern'}],
   ['gryphonrider',12,11,5,{pal:'R',ai:'aggr',plan:'wyvern'}],
@@ -6202,6 +6440,15 @@ function terChips(ch,u){const T=TER[ch],o=[];
  if(T.heal)o.push([`Heals ${T.heal} HP a turn`,'up']);if(ch==='H')o.push(['Bows +1 range','up']);
  if(u&&isFlyer(u)&&T.d)o.push(['Flyers get no cover','']);
  return o;}
+// R-082: the warning on a marked tile, with the exact damage to whoever stands there now
+// R-087: when the tide reaches this tide-sand tile
+function tideNote(r,c){if(tile(r,c)!=='Q')return '';const nx=tideNext(r);if(!nx)return '';return nx.turn<=G.turn?'':`The tide floods this row at the start of turn ${nx.turn}${nx.turn===G.turn+1?' (next turn)':''}: ${RULES.tide.dmg} damage to anyone still here, pushed ashore.`;}
+function markNote(r,c,u){const ms=marksOn(r,c).filter(m=>m.id!==(u&&u.id));if(!ms.length)return '';const seen={};
+ for(const m of ms){const a=byId(m.id),k=a.name+'|'+m.k;seen[k]=seen[k]||{a,k:m.k,n:0};seen[k].n++;}
+ const tx=Object.values(seen).map(s=>`${s.n>1?s.n+' × ':''}${esc(s.a.name)}’s ${esc(SK[s.k].n)}`).join(' and ');
+ let dm='';if(u){const one=v=>ms.reduce((t,m)=>t+teleDmg(byId(m.id),m.k,v),0),n=one(u);dm=` ${esc(u.name)} takes ${n}`;
+  if(u.side!=='R'&&!u.defend){u.defend=true;const nd=one(u);u.defend=false;if(nd<n)dm+=` (${nd} if it Defends)`;}dm+='.';}
+ return `${tx} land${ms.length>1?'':'s'} here on the enemy’s next turn.`+dm;}
 function tileCard(){const tt=$('#ttip');if(!tt)return;const live=G&&G.started&&!G.over,S=live&&ctx().sel;
  // a selected unit always shows its own card; otherwise whatever tile or unit was tapped
  const I=live&&(S?{unit:S.id}:G.inspect);
@@ -6215,9 +6462,11 @@ function tileCard(){const tt=$('#ttip');if(!tt)return;const live=G&&G.started&&!
   h=`<div class="tn"><span style="color:${sideC}">●</span> ${esc(u.name)} <small>Lv ${u.lv||''}</small>${u.defend?' <small class="gu">DEF+3</small>':''}</div>
    <div class="hpb"><i style="width:${(fr*100).toFixed(0)}%;background:${fr>.6?'#6fd06a':fr>.3?'#e8c24a':'#e8573f'}"></i><b>${u.hp}/${u.s.hp}</b></div>
    <div class="ks"><span>${mk==='mag'?'MAG':'ATK'} <b>${pw}</b></span><span>DEF <b>${stat(u,'def')}</b></span><span>SPD <b>${stat(u,'spd')}</b></span><span>MOV <b>${movOf(u)}</b></span></div>
-   <div class="tc ter"><span>${esc(T.n)}</span>${terChips(ch,u).filter(([t])=>!/^(Move cost|Mounted|Heavy)/.test(t)).map(([t,k])=>`<span class="${k}">${esc(t)}</span>`).join('')}</div>`;}
+   <div class="tc ter"><span>${esc(T.n)}</span>${terChips(ch,u).filter(([t])=>!/^(Move cost|Mounted|Heavy)/.test(t)).map(([t,k])=>`<span class="${k}">${esc(t)}</span>`).join('')}</div>`;
+  {const mn=markNote(r,c,u);if(mn)h+=`<div class="tt" style="color:#ff9a5a">⚠ ${mn}</div>`;const tn=tideNote(r,c);if(tn)h+=`<div class="tt" style="color:#9fd3ff">⚠ ${tn}</div>`;}}
  else{const chest=G.chests.find(x=>x.r===r&&x.c===c&&(x.kind!=='hidden'||x.found));
-  h=`<div class="tn">${esc(T.n)}</div><div class="tc">${chips}</div><div class="tt">${esc(T.tip)}${chest?' '+(chest.open?'An empty chest.':chest.kind==='iron'?'An iron chest: needs a scout or an Iron Key.':'A chest: end a unit’s turn here to open it.'):''}</div>`;}
+  h=`<div class="tn">${esc(T.n)}</div><div class="tc">${chips}</div><div class="tt">${esc(T.tip)}${chest?' '+(chest.open?'An empty chest.':chest.kind==='iron'?'An iron chest: needs a scout or an Iron Key.':'A chest: end a unit’s turn here to open it.'):''}</div>`;
+  {const mn=markNote(r,c,null);if(mn)h+=`<div class="tt" style="color:#ff9a5a">⚠ ${mn}</div>`;const tn=tideNote(r,c);if(tn)h+=`<div class="tt" style="color:#9fd3ff">⚠ ${tn}</div>`;}}
  tt.innerHTML=h;tt.hidden=false;tt.classList.toggle('unit',!!u);
  // put the card in whichever corner hides the least: the unit it describes, then enemies, then allies and
  // the selected unit's move tiles (top-left wins ties; zoom buttons sit bottom-right)
