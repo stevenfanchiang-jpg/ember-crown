@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="2398fa4af1";window.EC_BUILT="Nov 21, 12:53 am";
+window.EC_VERSION="2814c3b02d";window.EC_BUILT="Nov 21, 7:24 am";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -2715,6 +2715,7 @@ function spawnGuest(g){
  if(g.hero&&g.side!=='G'&&!HERO[g.hero].guest){const rec=heroBy(g.hero)||heroRec(g.hero);if(!heroBy(g.hero)){rec.guest=true;rec.tempGuest=1;G.tempRecs.push(rec);}u=mkUnit({rec,side:g.side||'B',r:t[0],c:t[1]});u.tempGuest=!heroBy(g.hero);}
  else if(g.hero){const rec=heroRec(g.hero);rec.guest=true;rec.tempGuest=1;u=mkUnit({rec,side:g.side||'G',r:t[0],c:t[1]});u.tempGuest=1;u.rec=null;}
  else u=mkUnit(Object.assign({},g,{side:g.side||'B',r:t[0],c:t[1]}));
+ if(g.ai&&g.hero)u.ai=g.ai;   // mission can set a hero guest's AI (m5: Edric holds the gate)
  u.tag=g.tag||g.hero||null;if(g.cls==='civ')u.tag=g.tag||'civ';u.guest=true;
  G.units.push(u);return u;
 }
@@ -4522,7 +4523,7 @@ MISSIONS.push({
  ],
  deploy:[[6,11],[6,10],[7,10],[7,11],[7,12],[6,12]],
  forced:['rowan'],
- guests:[{hero:'edric',r:8,c:11,side:'G'}],
+ guests:[{hero:'edric',r:9,c:11,side:'G',ai:'stay'}],   // owner 2026-11-21: he holds the main gate (attacks what reaches him, never charges out)
  enemies:[
   ['blackrider',5,11,11,{pal:'R',ai:'hunt',name:'Captain Sable',tag:'sable',gold:200}],
   ['blackrider',3,10,9,{pal:'R',ai:'aggr'}],
@@ -4541,13 +4542,8 @@ MISSIONS.push({
    {w:'sable',x:'Lord of Fallowmere! Hand over the boy with the ember scar, and your keep may stand.'},
    {w:'edric',x:'There’s no such boy here, Captain. Only horses and old men.'},
    {w:'sable',x:'I have my orders, Sir Edric. I would rather not burn a knight I once saluted. Don’t make me.'},
-   {w:'edric',x:'Nobody is making you, Captain. That’s the trouble with orders.'}
-  ]},
-  {when:{turn:2},scene:[
-   {w:'narr',x:'Soldiers scale the east wall and run north to cut off the postern.'},
-   {w:'kael',x:'They’re circling round! Move, Rowan!'}
-  ],spawn:[['soldier',5,3,17,{pal:'R',ai:'aggr'}],['soldier',4,4,17,{pal:'R',ai:'aggr'}]]},
-  {when:{turn:3},scene:[
+   {w:'edric',x:'Nobody is making you, Captain. That’s the trouble with orders.'},
+   // farewell moved here from turn 3 (owner 2026-11-21): Edric used to fall before he could say it
    {w:'edric',x:'Rowan. Come here. No, don’t argue for once.'},
    {w:'edric',x:'There’s a letter in my saddlebag. And take this ring. It was never really mine.'},
    {w:'rowan',x:'Come with us. Please. You can’t hold them alone.'},
@@ -4558,6 +4554,10 @@ MISSIONS.push({
    {w:'kael',x:'...I swear.'},
    {w:'narr',x:'Sir Edric draws his sword and steps into the gateway. He does not look back at either of them.'}
   ]},
+  {when:{turn:2},scene:[
+   {w:'narr',x:'Soldiers scale the east wall and run north to cut off the postern.'},
+   {w:'kael',x:'They’re circling round! Move, Rowan!'}
+  ],spawn:[['soldier',5,3,17,{pal:'R',ai:'aggr'}],['soldier',4,4,17,{pal:'R',ai:'aggr'}]]},
   {when:{reach:{tag:'rowan',r:2,c:11}},scene:[
    {w:'rowan',x:'The postern’s open. The woods are just beyond.'},
    {w:'elowen',x:'Don’t stop. He bought us this road. Don’t waste it.'}
