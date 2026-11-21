@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="5d84b64ddb";window.EC_BUILT="Nov 21, 11:28 am";
+window.EC_VERSION="825517181c";window.EC_BUILT="Nov 21, 1:38 pm";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -1307,7 +1307,7 @@ function drawExit(g,x,y,tm){const w=RM?0:Math.sin(tm/260)*2;pole(g,x+8,y+40,x+8,
 function drawChest(g,ch,tm){const x=ch.c*TS+24,y=ch.r*TS+30;
  if(ch.kind==='hidden'&&!ch.found){if(!RM&&Math.sin(tm/700+ch.c*3+ch.r)>.96){g.fillStyle='rgba(255,250,220,.9)';const s=3;g.beginPath();g.moveTo(x,y-10-s);g.lineTo(x+1,y-10);g.lineTo(x+s,y-10);g.lineTo(x+1,y-9);g.lineTo(x,y-10+s);g.lineTo(x-1,y-9);g.lineTo(x-s,y-10);g.lineTo(x-1,y-10);g.closePath();g.fill();}return;}
  // painted maps get painted chests (2026-11-17, owner: the old chest looked out of place there)
- if(typeof MAPIMG!=='undefined'&&imgOK(MAPIMG[G.mid])){const k=ch.kind==='iron'?'chest_iron':ch.open?'chest_open':'chest_shut',I=OBJIMG[k];
+ if(typeof MAPIMG!=='undefined'&&imgOK(MAPIMG[G.mid])){const k=ch.kind==='iron'?(ch.open&&imgOK(OBJIMG.chest_iron_open)?'chest_iron_open':'chest_iron'):ch.open?'chest_open':'chest_shut',I=OBJIMG[k];   // opened iron chest (owner 2026-11-21)
   if(imgOK(I)){const s=60/Math.max(I.naturalWidth,I.naturalHeight*1.1),w=I.naturalWidth*s,h=I.naturalHeight*s,by=y+16;   // bigger (owner 2026-11-18: chests hard to see)
    if(!ch.open){const p=RM?.6:.5+.25*Math.sin(tm/600+ch.c+ch.r);const gl=g.createRadialGradient(x,by-6,2,x,by-6,36);gl.addColorStop(0,`rgba(255,220,120,${.85*p})`);gl.addColorStop(.6,`rgba(255,200,90,${.35*p})`);gl.addColorStop(1,'rgba(255,214,110,0)');g.fillStyle=gl;g.beginPath();g.ellipse(x,by-6,36,18,0,0,7);g.fill();}
    g.drawImage(I,x-w/2,by-h,w,h);
