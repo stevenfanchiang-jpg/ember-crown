@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="b70b99a04c";window.EC_BUILT="Nov 20, 11:41 pm";
+window.EC_VERSION="01e200edec";window.EC_BUILT="Nov 21, 12:15 am";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -314,6 +314,8 @@ html.rot #skbox,#skbox.sm{font-size:12px;padding:6px 10px}
 
 /* barracks (owner 2026-11-18): full-screen roster grid + one-page character view, no scrolling */
 #screen.armyfull{place-items:stretch;padding:max(8px,env(safe-area-inset-top,0px)) max(10px,env(safe-area-inset-right,0px)) max(8px,env(safe-area-inset-bottom,0px)) max(10px,env(safe-area-inset-left,0px))}
+/* upright phone (html.rot): the phone's top (notch/status bar) is the game's left, its bottom (home bar) the game's right (owner 2026-11-21) */
+html.rot #screen.armyfull{padding:8px max(14px,env(safe-area-inset-bottom,0px)) 8px max(14px,env(safe-area-inset-top,0px))}
 #screen.armyfull .sc,#screen.armyfull .sc.wide{max-width:none;width:100%;height:100%;padding:10px 14px;gap:8px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column}
 .avhead,.avtop{display:flex;align-items:center;gap:8px;flex:none}.avhead h2{margin:0;font-size:24px}.sp{flex:1}
 .avgrid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;align-content:start;overflow:auto}
@@ -2768,6 +2770,8 @@ async function sideEnds(side){
 }
 async function startSide(side){
  const mine=live().filter(u=>side==='B'?u.side==='B':u.side===side);
+ // carry fix (owner 2026-11-21): live() skips carried units, so a passenger never got its turn back and could not act after being set down
+ for(const u of G.units)if(u.carried&&!u.dead&&!u.gone&&u.side===side){u.done=false;u.moved=false;u.movedTiles=0;u.defend=false;}
  for(const u of mine){u.done=false;u.moved=false;u.movedTiles=0;u.defend=false;u.ambushed=0;
   if(u.frozen){u.frozen--;if(u.frozen<0)u.frozen=0;}
   if(isStill(u))u.done=true;else if(u.still&&u.still===G.turn&&!u.woke){u.woke=1;ftext(u.x,u.y-62,'Awake!','#c9f5b0',true);ring(u.x,u.y,'#c9f5b0');logm(`${u.name} wakes and can act.`,'B');}   // R-079
