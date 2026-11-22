@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="3f363ae439";window.EC_BUILT="Nov 22, 12:38 pm";
+window.EC_VERSION="516662fb5f";window.EC_BUILT="Nov 22, 3:49 pm";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -2698,6 +2698,7 @@ async function runEvents(trig){
  if(!G||G.over||!G.m.events)return;
  for(let i=0;i<G.m.events.length;i++){const ev=G.m.events[i];if(G.fired[i])continue;if(!evMatch(ev.when,trig))continue;
   if(ev.when.rout&&alive('R').some(u=>!u.ignore))continue;
+  if(!evOK(ev))continue;   // R-091 conditions: if / unless a story flag, alive (a tagged unit is still on the field)
   G.fired[i]=1;const wasBusy=G.busy;G.busy=true;amenu.hidden=true;
   if(ev.focus)await focus(ev.focus.c*TS+24,ev.focus.r*TS+24,true);
   if(ev.scene)await playSceneP(ev.scene);
@@ -2705,6 +2706,7 @@ async function runEvents(trig){
   if(ev.guests)for(const gst of ev.guests)spawnGuest(gst);
   if(ev.spawn){for(const s of ev.spawn){const [cls,lv,r,c,o]=s;const t=unitAt(r,c)?freeNear(r,c):[r,c];if(!t)continue;const u=mkUnit(Object.assign({cls,lv,side:'R',r:t[0],c:t[1]},o||{}));G.units.push(u);u.flash=1;parts(u.x,u.y-20,12,['#ffffff','#cfc6b0'],{spd:60,life:500});}
    const s0=ev.spawn[0];await focus(s0[3]*TS+24,s0[2]*TS+24,true);sfx('horn');await wait(450);}
+  if(ev.defect){for(const d of ev.defect){const u=live().find(x=>!x.dead&&!x.gone&&(x.tag===d.tag||x.hero===d.tag));if(u)await defectUnit(u,d);}}   // R-091
   if(ev.remove){for(const tag of ev.remove){const u=live().find(x=>x.tag===tag||x.hero===tag);if(u){u.gone=true;ring(u.x,u.y,'#ffffff');}}}
   if(ev.heal){for(const u of alive('B')){u.hp=u.s.hp;ring(u.x,u.y,'#bff59e');}}
   if(ev.act&&EVENT_ACTS[ev.act])await EVENT_ACTS[ev.act](ev);
@@ -2712,6 +2714,26 @@ async function runEvents(trig){
  }
 }
 const EVENT_ACTS={};
+/* R-091 (T-020, 2026-11-22): mid-battle story choices that change units. A choice line sets a flag (50_story.js);
+   later events in the same trigger can test it (if / unless) and act on units: defect (switch to the player's side,
+   optionally riding to a tile), remove (leave the field), spawn. */
+function evOK(ev){const F=(typeof CAMP!=='undefined'&&CAMP&&CAMP.flags)||{};
+ if(ev.if&&!F[ev.if])return false;if(ev.unless&&F[ev.unless])return false;
+ if(ev.alive&&!live().some(x=>!x.dead&&!x.gone&&(x.tag===ev.alive||x.hero===ev.alive)))return false;return true;}
+// rules only: returns the unit now on the player's side. With a hero entry for its tag (T-021), the enemy unit is
+// replaced by that hero as a temporary guest (same share of HP); the mission's conditional joins keep them after the battle.
+function resolveDefect(u,d){d=d||{};let to=[u.r,u.c];
+ if(d.r!=null){const o=unitAt(d.r,d.c);const t=o&&o!==u?freeNear(d.r,d.c):[d.r,d.c];if(t)to=t;}
+ G.marks=(G.marks||[]).filter(m=>m.id!==u.id);
+ if(u.tag&&typeof HERO!=='undefined'&&HERO[u.tag]&&!(typeof heroBy==='function'&&typeof CAMP!=='undefined'&&CAMP&&heroBy(u.tag))){
+  const rec=heroRec(u.tag);rec.guest=true;rec.tempGuest=1;(G.tempRecs=G.tempRecs||[]).push(rec);
+  const n=mkUnit({rec,side:'B',r:to[0],c:to[1]});n.tempGuest=1;n.tag=u.tag;n.hp=Math.max(1,Math.round(n.s.hp*u.hp/u.s.hp));n.defected=1;
+  u.gone=true;G.units.push(n);return n;}
+ u.side='B';u.pal=null;u.ai=null;u.boss=0;u.gold=0;u.face=1;u.r=to[0];u.c=to[1];u.done=false;u.moved=false;u.defected=1;delete u.hr;delete u.hc;return u;}
+async function defectUnit(u,d){
+ await focus(u.c*TS+24,u.r*TS+24,true);const n=resolveDefect(u,d);place(n);n.flash=1;
+ ring(n.x,n.y,'#8fd3ff');parts(n.x,n.y-20,14,['#ffffff','#8fd3ff'],{spd:60,life:500});sfx('select');
+ logm(`${n.name} joins your side.`,'B');toast(`${n.name} joins your side!`);await focus(n.c*TS+24,n.r*TS+24,true);await wait(350);}
 function spawnGuest(g){
  const t=unitAt(g.r,g.c)?freeNear(g.r,g.c):[g.r,g.c];if(!t)return null;
  let u;
@@ -3416,12 +3438,14 @@ function resumeBattle(){const d=LS.get('ec-battle',null);if(!d)return showTitle(
  for(const u of G.units){if(u.rec&&!u.tempGuest){const r=recBy(u.rec);if(r){u.s=r.s;u.eq=r.eq;}}u.walk=false;u.ox=u.oy=0;u.flash=0;if(u.dead)u.dieT=1;place(u);}
  hideScreen();$('#app').hidden=false;bakeTerrain();fitCam();clearSel();ui();loadAnims();if(G.side!=='B'){G.side='B';startSide('B');}}
 /* ---------- results ---------- */
+// joins may be conditional: {hero, if:'flag'} (R-091, m20 Sable); heroes without a HERO entry yet are skipped
+function joinsOf(m){return (m.joins||[]).map(j=>typeof j==='string'?{hero:j}:j).filter(j=>HERO[j.hero]&&(!j.if||CAMP.flags[j.if])).map(j=>j.hero);}
 async function battleResult(won,msg){
  const m=G.m;
  if(!won){show(`<div class="eyebrow">Defeat</div><h2>The battle is lost</h2><p>${esc(msg)}</p><div class="col"><button class="b gold" data-go="retry">Try again</button><button class="b" data-go="loadcamp">Return to camp</button></div>`);return;}
  // rewards
  const rw=m.reward||{};CAMP.gold+=rw.gold||0;for(const k of rw.items||[]){if(k==='edricring'&&heroBy('rowan')&&!heroBy('rowan').eq.x){heroBy('rowan').eq.x=k;}else BAG.add(k);}
- for(const k of m.joins||[]){if(!heroBy(k)){const tr=G.tempRecs.find(r=>r.hero===k);if(tr){tr.guest=false;delete tr.tempGuest;tr.joined=CAMP.mi;CAMP.roster.push(tr);}else addHero(k);}}
+ for(const k of joinsOf(m)){if(!heroBy(k)){const tr=G.tempRecs.find(r=>r.hero===k);if(tr){tr.guest=false;delete tr.tempGuest;tr.joined=CAMP.mi;CAMP.roster.push(tr);}else addHero(k);}}
  if(m.id==='m9'){const r=heroBy('rowan');if(r&&r.cls==='militia'){promote(r,'squire');if(r.eq.w==='pitchfork'){BAG.add('pitchfork');r.eq.w='ironsword';}}}
  if(m.id==='m10'){const r=heroBy('rowan');if(r){r.oath=1;if(r.eq.w)BAG.add(r.eq.w);r.eq.w='oathblade';if(!r.sk.includes('oath'))r.sk.push('oath');}}
  CAMP.done[m.id]=1;if(!m.optional)CAMP.mi=MISSIONS.indexOf(m)+1;
@@ -3434,7 +3458,7 @@ async function battleResult(won,msg){
   ${xp.length?`<div class="list">${xp.map(u=>`<div class="li" style="cursor:default"><canvas width="96" height="96" data-rec="${u.rec}"></canvas><span class="nm">${esc(u.name)} <span class="lv">Lv ${recBy(u.rec).lv}</span></span><span class="ds">+${u.xpGained} XP</span><span class="rt"></span></div>`).join('')}</div>`:''}
   ${fallen.length?`<p class="obj">Gravely wounded: ${fallen.map(u=>esc(u.name)).join(', ')}. They sit out the next battle unless a chapel heals them first.</p>`:''}
   ${healed.length?`<p class="obj">Back on their feet: ${healed.map(esc).join(', ')}.</p>`:''}
-  ${(m.joins||[]).length?`<p class="obj">${m.joins.map(k=>esc(HERO[k].n)).join(' and ')} joined the company!</p>`:''}
+  ${joinsOf(m).length?`<p class="obj">${joinsOf(m).map(k=>esc(HERO[k].n)).join(' and ')} joined the company!</p>`:''}
   <button class="b gold" id="resGo">Continue</button>`);miniPortraits();
  $('#resGo').onclick=async()=>{hideScreen();await playSceneP(m.post||[]);G=null;saveCamp();if(!m.optional&&!MISSIONS.some(x=>x.act===m.act&&!x.optional&&!CAMP.done[x.id])){await playSceneP(ACT_ENDS[m.act]||ACT_END);const nx=nextMain();if(nx&&nx.act!==m.act&&ACT_OPEN[nx.act])await playSceneP(ACT_OPEN[nx.act]);}interlude(m.after||'camp');};
 }
@@ -6231,7 +6255,7 @@ MISSIONS.push({
  ],
  enemies:[
   ['regentcap',14,8,1,{pal:'R',ai:'stay',boss:1,name:'General Morrow',tag:'morrow',gold:400,plan:'regentgeneral'}],
-  ['blackrider',12,7,3,{pal:'R',ai:'aggr',name:'Captain Sable',tag:'sable'}],
+  ['blackrider',12,7,3,{pal:'R',ai:'stay',name:'Captain Sable',tag:'sable'}],
   ['blackrider',12,6,4,{pal:'R',ai:'aggr'}],
   ['blackrider',12,9,4,{pal:'R',ai:'aggr'}],
   ['blackrider',12,8,6,{pal:'R',ai:'aggr'}],
@@ -6272,7 +6296,7 @@ MISSIONS.push({
    {w:'sable',x:'I burned Fallowmere. I killed the knight at the gate. I’ll not ride over children. Do what you like with me.'},
    {w:'kael',x:'She killed my father. Rowan. She killed our father.'},
    {w:'narr',x:'What will Rowan do?',choice:[{t:'Take her oath',set:'sableoath'},{t:'Send her away',set:'sablegone'}]}
-  ]},
+  ],alive:'sable'},
   {when:{turn:6},scene:[
    {w:'sable',x:'Then I am yours. Give me a horse and point me at Morrow’s riders.',if:'sableoath'},
    {w:'rowan',x:'Not mine. Yours. You’ll fight because you choose to, or not at all.',if:'sableoath'},
@@ -6283,7 +6307,9 @@ MISSIONS.push({
   ],spawn:[['soldier',12,8,0,{pal:'R',ai:'aggr'}],['pikeman',12,7,0,{pal:'R',ai:'aggr'}],['soldier',12,15,20,{pal:'R',ai:'aggr'}],['soldier',12,15,21,{pal:'R',ai:'aggr'}]]},
   {when:{dead:'morrow'},scene:[
    {w:'morrow',x:'The Regent... has more armies... than you have friends...'}
-  ]}
+  ]},
+  {when:{turn:5},if:'sableoath',alive:'sable',defect:[{tag:'sable',r:8,c:17}]},
+  {when:{turn:5},if:'sablegone',alive:'sable',remove:['sable']}
  ],
  pre:[
 
@@ -6327,7 +6353,7 @@ MISSIONS.push({
   {w:'narr',x:'Maris kneels and touches the flat of the Oathblade to Rowan’s shoulder. Sir Rowan, Knight of the Ashen Table.'},
   {w:'elowen',x:'Edric would have wept. Then pretended it was the smoke.'}
  ],
- joins:[],
+ joins:[{"hero":"sable","if":"sableoath"}],
  reward:{gold:500,items:[]},
  after:'camp',optional:false,requires:null
 });
