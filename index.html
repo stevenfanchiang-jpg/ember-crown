@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="825517181c";window.EC_BUILT="Nov 21, 1:38 pm";
+window.EC_VERSION="3f363ae439";window.EC_BUILT="Nov 22, 12:38 pm";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -48,6 +48,7 @@ new MutationObserver(lbl).observe(document.documentElement,{childList:true,subtr
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+body.intro #side,body.intro #zIn,body.intro #zOut{visibility:hidden}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.4;overflow:hidden;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
@@ -376,6 +377,7 @@ html.rot #screen.armyfull{padding:8px max(14px,env(safe-area-inset-bottom,0px)) 
 <div id="screen" class="ov" hidden></div>
 <div id="town" class="ov" hidden><canvas id="tcv"></canvas><div class="ttop"><div class="ttitle" id="tTitle"></div><div class="gold"><i></i><span id="tGold">0</span></div></div><div class="tbar" id="tbar"></div></div>
 <div id="wmap" class="ov" hidden><canvas id="wcv"></canvas><div class="ttop"><button class="b sm" id="wBack">‹ Back</button><div class="ttitle" id="wTitle">Aldmere</div></div><div class="winfo" id="winfo"></div></div>
+<button class="b sm dskip" id="introSkip" hidden style="position:fixed;z-index:31">Skip intro</button>
 <div id="dlg" class="ov" hidden><div class="dbox" id="dbox"><canvas id="dpor" width="200" height="200"></canvas><div class="dtx"><div class="dname" id="dname"></div><div class="dtext" id="dtext"></div><div class="dchoices" id="dchoices" hidden></div><div class="dhint" id="dhint">Tap to continue</div></div></div><button class="b sm dskip" id="dskip">Skip scene</button></div>
 <div id="toast" hidden></div>
 <div id="lootpop" hidden aria-live="polite"></div>
@@ -2538,7 +2540,7 @@ function resolveKill(u,by,how){const ev=[];
   const K=RULES.killGold,gold=(u.gold||0)+(u.lv*K.perLv+K.base)*(by.eq.x==='lucky'?K.lucky:1)|0;CAMP.gold+=gold;G.goldWon+=gold;ev.push({t:'gold',n:gold});
   if(u.loot){ev.push({t:'loot',loot:u.loot,by});u.loot=null;}if(u.rec)recBy(u.rec)&&(recBy(u.rec).kills++);
   const br=by.rec&&recBy(by.rec);if(br)br.kills++;}
- if(u.side==='R'&&has(u,'rise')&&how!=='fire'&&how!=='holy'&&!u.risen){G.graves.push({r:u.r,c:u.c,turns:2,cls:u.cls,lv:u.lv,pal:u.pal,name:u.name,id:u.id});ev.push({t:'log',m:`${u.name} sinks into the mud… it will rise again.`,s:'R'});}
+ if(u.side==='R'&&has(u,'rise')&&how!=='fire'&&how!=='holy'&&!u.risen){G.graves.push({r:u.r,c:u.c,turns:2,cls:u.cls,lv:u.lv,pal:u.pal,name:u.name,id:u.id,sk:u.sk&&u.sk.slice()});ev.push({t:'log',m:`${u.name} sinks into the mud… it will rise again.`,s:'R'});}
  if(u.side==='B'&&u.rec&&!u.guest){G.fallen.push(u.id);const r=recBy(u.rec);if(r&&u.hero!=='rowan'){r.wounded=1;}ev.push({t:'log',m:`${u.name} is gravely wounded and carried from the field.`,s:'B'});}
  else if(u.side==='R'){ev.push({t:'log',m:`${u.name} falls.`,s:'B'});}
  return ev;}
@@ -2588,7 +2590,8 @@ function catCheck(u){const c=G.cat;if(!c||c.gone||u.side!=='B'||!u.rec)return;if
  const r=recBy(u.rec);const k=STATS[(hash(u.name+G.mid)%5)+1];r.s[k]++;c.gone=true;CAMP.cats[G.mid]=1;sfx('meow');ftext(c.c*TS+28,c.r*TS,'Purr…','#ffe0a8',true);ftext(u.x,u.y-60,'+1 '+STATN[k],'#ffd36b',true);logm(`${u.name} pets the sleepy cat. +1 ${STATN[k]}.`,'B');toast(`The cat purrs. ${u.name} gains +1 ${STATN[k]}.`);return true;}
 async function graveTick(){
  for(const gr of G.graves.slice()){const o=unitAt(gr.r,gr.c);if(o&&o.side!=='R'){G.graves=G.graves.filter(x=>x!==gr);ftext(gr.c*TS+24,gr.r*TS,'Trampled','#c9f5b0');logm(`${o.name} tramples the grave flat. It won’t rise.`,'B');continue;}
-  gr.turns--;if(gr.turns<=0&&!o){G.graves=G.graves.filter(x=>x!==gr);const u=mkUnit({cls:gr.cls,lv:gr.lv,side:'R',pal:gr.pal,r:gr.r,c:gr.c,name:gr.name});u.hp=Math.ceil(u.s.hp/2);u.risen=1;G.units.push(u);parts(u.x,u.y-10,16,['#9fe0b0','#5a8a6a'],{spd:60,grav:-30,life:700});sfx('death');logm(`${u.name} rises from the mud!`,'R');await focus(u.x,u.y);await wait(300);}}
+  gr.turns--;if(gr.turns<=0&&!o){G.graves=G.graves.filter(x=>x!==gr);const u=mkUnit({cls:gr.cls,lv:gr.lv,side:'R',pal:gr.pal,r:gr.r,c:gr.c,name:gr.name});u.hp=Math.ceil(u.s.hp/2);u.risen=1;if(gr.sk)u.sk=gr.sk;G.units.push(u);   // risen units keep their skills (a sea-ghoul keeps 'seaborn', 2026-11-21)
+  parts(u.x,u.y-10,16,['#9fe0b0','#5a8a6a'],{spd:60,grav:-30,life:700});sfx('death');logm(`${u.name} rises from the mud!`,'R');await focus(u.x,u.y);await wait(300);}}
 }
 /* ---------- telegraphed area attacks (R-082): drawing side ---------- */
 async function showMark(u){const m=setMark(u);if(!m)return null;
@@ -2942,12 +2945,13 @@ function draw(now){
  for(const ch of G.chests)if(!ch.open||ch.found)items.push({y:ch.r*TS+30,draw:(gg,t)=>drawChest(gg,ch,t)});
  for(const v of G.vines)items.push({y:v.r*TS+36,draw:(gg,t)=>drawVine(gg,v,t)});
  if(G.cat&&!G.cat.gone)items.push({y:G.cat.r*TS+34,draw:(gg,t)=>drawCat(gg,G.cat,t)});
- for(const u of G.units){if(u.carried||u.gone&&!u.dead)continue;if(u.dead&&(u.dieT||0)>=1)continue;const vis=seenByPlayer(u)||u.dead;if(!vis)continue;
+ for(const u of G.units){if(u.carried||u.off||u.gone&&!u.dead)continue;if(u.dead&&(u.dieT||0)>=1)continue;const vis=seenByPlayer(u)||u.dead;if(!vis)continue;
   u.ghost=u.hidden&&u.side!=='R'?1:0;items.push({y:u.y+(u.oy||0)+.01,u});}
  items.sort((a,b)=>a.y-b.y);
- for(const it of items){if(it.u)drawUnit(g,it.u,now,{sel:G.sel===it.u.id,buff:it.u.buffs&&it.u.buffs.atk>0});else it.draw(g,now);}
+ for(const it of items){if(it.u){const fd=it.u.fade!=null&&it.u.fade<1;if(fd){g.save();g.globalAlpha=Math.max(0,it.u.fade);}drawUnit(g,it.u,now,{sel:G.sel===it.u.id,buff:it.u.buffs&&it.u.buffs.atk>0});if(fd)g.restore();}else it.draw(g,now);}
+ if(typeof IN!=='undefined'&&IN&&IN.spk&&!IN.spk.off){const u=IN.spk,y=u.y-60+Math.sin(now/180)*2.5;g.strokeStyle='rgba(255,211,107,'+(.55+.3*Math.sin(now/200)).toFixed(2)+')';g.lineWidth=2.5;ell(g,u.x,u.y-2,17,6.5);g.stroke();g.fillStyle='#ffd36b';g.strokeStyle='#14100c';g.lineWidth=2;g.beginPath();g.moveTo(u.x-7,y-8);g.lineTo(u.x+7,y-8);g.lineTo(u.x,y);g.closePath();g.stroke();g.fill();}   // mission intro: who is speaking
  if(isNight())drawNight(g);   // R-075: dark where Blue can't see, a blue tint where it sees by its own eyes, clear in firelight
- for(const u of G.units)if(!u.dead&&!u.carried&&!u.gone&&seenByPlayer(u))drawBars(g,u);
+ if(!(typeof IN!=='undefined'&&IN))for(const u of G.units)if(!u.dead&&!u.carried&&!u.gone&&!u.off&&seenByPlayer(u))drawBars(g,u);
  for(const f of FX){
   if(f.k==='p'){g.globalAlpha=Math.max(0,1-f.age/f.life);g.fillStyle=f.c;g.beginPath();g.arc(f.x,f.y,f.s,0,7);g.fill();g.globalAlpha=1;}
   else if(f.k==='slash'){const p=f.age/f.life;g.strokeStyle=f.c?`rgba(255,211,107,${1-p})`:`rgba(255,255,255,${1-p})`;g.lineWidth=3.5*(1-p)+1;g.beginPath();g.arc(f.x,f.y,14+p*6,-2.4+f.d,-.6+f.d);g.stroke();}
@@ -3284,11 +3288,11 @@ document.addEventListener('keydown',e=>{if(!$('#screen').hidden||!G||DL||SCENE.o
 const dlg=$('#dlg');let DL=null;
 function speaker(w){if(w==='narr')return null;if(HERO[w]){const h=HERO[w];const rec=CAMP&&heroBy(w);return {n:h.n,cls:rec?rec.cls:h.cls,side:h.side==='G'?'G':'B',look:Object.assign({},h.look),hero:w,oath:rec&&rec.oath};}
  if(typeof SPK!=='undefined'&&SPK[w]){const s=SPK[w];return {n:s.n,cls:s.cls,side:s.side||'R',pal:s.pal,look:s.look||{}};}return {n:w,cls:'civ',side:'G',look:{}};}
-function playSceneP(lines){return new Promise(res=>playScene(lines,res));}
+function playSceneP(lines,onLine){return new Promise(res=>playScene(lines,res,onLine));}
 // a line may carry if:'flag' / unless:'flag' (flags set by earlier player choices)
-function playScene(lines,done){const F=(typeof CAMP!=='undefined'&&CAMP&&CAMP.flags)||{};lines=(lines||[]).filter(l=>(!l.if||F[l.if])&&(!l.unless||!F[l.unless]));if(!lines.length){done&&done();return;}DL={lines,i:0,done,typing:null};dlg.hidden=false;amenu.hidden=true;showLine();}
+function playScene(lines,done,onLine){const F=(typeof CAMP!=='undefined'&&CAMP&&CAMP.flags)||{};lines=(lines||[]).filter(l=>(!l.if||F[l.if])&&(!l.unless||!F[l.unless]));if(!lines.length){done&&done();return;}DL={lines,i:0,done,typing:null,onLine};$('#dskip').textContent=typeof IN!=='undefined'&&IN?'Skip intro':'Skip scene';dlg.hidden=false;amenu.hidden=true;showLine();}
 function showLine(){
- const L=DL.lines[DL.i],c=speaker(L.w);
+ const L=DL.lines[DL.i],c=speaker(L.w);if(DL.onLine)DL.onLine(L);
  $('#dbox').className='dbox'+(c?' '+c.side:' narr');
  const nm=$('#dname');nm.textContent=c?c.n:'';nm.className='dname '+(c?c.side:'');nm.hidden=!c;
  if(c){const p=$('#dpor').getContext('2d');p.setTransform(1,0,0,1,0,0);p.clearRect(0,0,200,200);const gr=p.createRadialGradient(100,80,10,100,110,150);gr.addColorStop(0,{B:'#2f5597',G:'#2f6a44',R:'#8f3326'}[c.side]);gr.addColorStop(1,'#0f1613');p.fillStyle=gr;p.fillRect(0,0,200,200);
@@ -3305,7 +3309,7 @@ function advance(){if(!DL)return;const L=DL.lines[DL.i];if(DL.typing){clearInter
  if(L.choice)return;DL.i++;if(DL.i>=DL.lines.length)endScene();else showLine();}
 function endScene(){if(!DL)return;clearInterval(DL.typing);const d=DL.done;DL=null;dlg.hidden=true;if(d)d();}
 dlg.addEventListener('click',e=>{unlockAudio();const cb=e.target.closest('[data-ch]');if(cb){const L=DL.lines[DL.i],o=L.choice[+cb.dataset.ch];if(o.set)CAMP.flags[o.set]=1;sfx('select');DL.i++;if(DL.i>=DL.lines.length)endScene();else showLine();return;}
- if(e.target.closest('#dskip')){if(DL&&DL.lines.slice(DL.i).some(l=>l.choice)){const j=DL.lines.findIndex((l,i)=>i>=DL.i&&l.choice);DL.i=j;showLine();return;}endScene();return;}advance();});
+ if(e.target.closest('#dskip')){if(typeof IN!=='undefined'&&IN){introSkipNow();return;}if(DL&&DL.lines.slice(DL.i).some(l=>l.choice)){const j=DL.lines.findIndex((l,i)=>i>=DL.i&&l.choice);DL.i=j;showLine();return;}endScene();return;}advance();});
 document.addEventListener('keydown',e=>{if(!DL)return;if(e.key===' '||e.key==='Enter'){e.preventDefault();advance();}});
 
 
@@ -3404,7 +3408,7 @@ function showGoal(m){return new Promise(res=>{const L=goalLines(m),el=document.c
  document.body.appendChild(el);const done=e=>{if(e&&e.type==='keydown'&&!(e.key==='Enter'||e.key===' '||e.key==='Escape'))return;if(e&&e.preventDefault)e.preventDefault();document.removeEventListener('keydown',done,true);el.remove();unlockAudio();sfx('tick');res();};
  el.addEventListener('click',done);document.addEventListener('keydown',done,true);});}
 async function startBattle(){
- G.started=true;LVQ.length=0;ui();await showGoal(G.m);await runEvents({start:true});if(G.over)return;
+ G.started=true;LVQ.length=0;ui();if(G.m.intro&&G.m.intro.length)await playIntro(G.m.intro);await showGoal(G.m);await runEvents({start:true});if(G.over)return;
  G.side='B';await startSide('B');
 }
 function saveBattle(){if(!G||!G.started||G.over)return;try{const c=Object.assign({},G);delete c.m;c.busy=false;c.striking=false;c.aim=null;LS.set('ec-battle',{G:c,CAMP,BAG:BAG.items,UID});}catch(e){}}
@@ -3434,6 +3438,80 @@ async function battleResult(won,msg){
   <button class="b gold" id="resGo">Continue</button>`);miniPortraits();
  $('#resGo').onclick=async()=>{hideScreen();await playSceneP(m.post||[]);G=null;saveCamp();if(!m.optional&&!MISSIONS.some(x=>x.act===m.act&&!x.optional&&!CAMP.done[x.id])){await playSceneP(ACT_ENDS[m.act]||ACT_END);const nx=nextMain();if(nx&&nx.act!==m.act&&ACT_OPEN[nx.act])await playSceneP(ACT_OPEN[nx.act]);}interlude(m.after||'camp');};
 }
+
+/* ================= MISSION INTROS (2026-11-22, owner request) =================
+ Played after deploy, before the goal card. Heroes and enemies walk onto the map, talk, and the camera
+ moves to whoever speaks. Steps come from "## mX intro" in story/actN_script.txt (tools/apply_script.py).
+ Every unit ends on its normal start tile and facing, so the battle itself is unchanged. Skip jumps to the end.
+ Steps: {cut:[r,c]} {pan:[r,c]} {enter:who,from:[r,c],to?:[r,c],bg?:1} {emote:who,t} {face:who,d} {wait:ms} {sync:1} {w,x} (a line)
+ who = hero key, enemy tag, class id, 'party' (blue units not on the map yet) or 'enemies' (red ones). */
+let IN=null;
+const tileXY=(r,c)=>[c*TS+TS/2,r*TS+TS*.78];
+function introWho(k,offOnly){const us=G.units.filter(u=>!u.dead&&!u.gone&&(!offOnly||u.off));
+ if(k==='party')return us.filter(u=>u.side==='B'&&u.off);
+ if(k==='enemies')return us.filter(u=>u.side==='R'&&u.off);
+ const named=us.filter(u=>u.hero===k||u.tag===k);if(named.length)return named;
+ return us.filter(u=>u.cls===k&&!u.hero&&(offOnly||!u.tag));}
+// shortest walk over ground this unit can cross (other units ignored); the start tile may be a building or off the map
+function introPath(u,from,to){const mt=mtOf(u),[r0,c0]=from,inside=inMap(r0,c0);
+ let start=[r0,c0];const lead=[];
+ if(!inside){const r1=clamp(r0,0,G.rows-1),c1=clamp(c0,0,G.cols-1);lead.push([r0,c0]);start=[r1,c1];}
+ const key=(r,c)=>r*G.cols+c,par=new Map([[key(...start),-1]]),q=[start];
+ while(q.length){const [r,c]=q.shift();if(r===to[0]&&c===to[1])break;
+  for(const [dr,dc] of [[1,0],[-1,0],[0,1],[0,-1]]){const nr=r+dr,nc=c+dc;if(!inMap(nr,nc)||par.has(key(nr,nc)))continue;
+   if(tcost(mt,tile(nr,nc))>=99&&!(nr===to[0]&&nc===to[1]))continue;par.set(key(nr,nc),key(r,c));q.push([nr,nc]);}}
+ const out=[];let k=key(...to);if(!par.has(k))return [...lead,start,to];
+ while(k!==-1){out.push([Math.floor(k/G.cols),k%G.cols]);k=par.get(k);}
+ return [...lead,...out.reverse()];}
+async function introWalk(u,path){
+ const cav=mtOf(u)==='cav',step=cav?95:mtOf(u)==='fly'?90:125;
+ [u.x,u.y]=tileXY(...path[0]);u.fade=0;u.off=0;u.walk=true;
+ for(let i=1;i<path.length&&!IN.skip;i++){
+  const [r,c]=path[i],[pr]=path[i-1],x0=u.x,y0=u.y,[x1,y1]=tileXY(r,c);
+  if(x1!==x0)u.face=x1>x0?1:-1;u.dir=r<pr?'up':r>pr?'dn':'sd';
+  const far=Math.max(1,Math.round(Math.hypot(x1-x0,y1-y0)/TS));
+  if(i%2===1)sfx(cav?'hoof':'step');
+  await tween(step*far,p=>{u.x=x0+(x1-x0)*p;u.y=y0+(y1-y0)*p;if(i===1)u.fade=p;});
+  u.fade=1;}
+ u.walk=false;u.fade=1;}
+function introFocus(u,force){if(!u||u.off)return Promise.resolve();
+ // keep the speaker in the upper part of the view, clear of the dialogue box
+ const h=vh/cam.z,w=vw/cam.z,sx=u.x-cam.x,sy=u.y-cam.y;if(!force&&sx>w*.15&&sx<w*.85&&sy>h*.18&&sy<h*.58)return Promise.resolve();
+ return focus(u.x,u.y+h*.14,true);}
+function introSkipNow(){if(!IN||IN.skip)return;IN.skip=true;for(const t of TW)t.t=t.dur;if(DL)endScene();$('#introSkip').hidden=true;}
+async function playIntro(steps){
+ if(!steps||!steps.length)return;
+ const B=new Set(G.units.filter(u=>u.side==='B').map(u=>u.hero).filter(Boolean));
+ IN={skip:false,bg:[],spk:null};G.busy=true;amenu.hidden=true;document.body.classList.add('intro');
+ for(const u of G.units)u.home={r:u.r,c:u.c,face:u.face,dir:u.dir};
+ // anyone who walks in starts off the map
+ for(const s of steps)if(s.enter){const k=s.enter;let us;
+  if(k==='party')us=G.units.filter(u=>u.side==='B');else if(k==='enemies')us=G.units.filter(u=>u.side==='R');
+  else{const nm=G.units.filter(u=>u.hero===k||u.tag===k);us=nm.length?nm:G.units.filter(u=>u.cls===k&&!u.hero);}
+  for(const u of us)if(!u.dead)u.off=1;}
+ $('#introSkip').hidden=false;
+ const lineOK=l=>!(HERO[l.w]&&!B.has(l.w));   // a hero who wasn't deployed doesn't speak
+ let i=0;
+ while(i<steps.length&&!IN.skip){const s=steps[i];
+  if(s.w){const lines=[];while(i<steps.length&&steps[i].w){if(lineOK(steps[i]))lines.push(steps[i]);i++;}
+   $('#introSkip').hidden=true;
+   await playSceneP(lines,L=>{const u=G.units.find(x=>!x.off&&!x.dead&&(x.hero===L.w||x.tag===L.w));IN.spk=u||null;if(u)introFocus(u);});
+   IN.spk=null;if(!IN.skip)$('#introSkip').hidden=false;continue;}
+  i++;
+  if(s.cut){const w=vw/cam.z,h=vh/cam.z,[x,y]=tileXY(...s.cut);cam.x=x-w/2;cam.y=y-h/2;clampCam();camTok++;}
+  else if(s.pan){const [x,y]=tileXY(...s.pan);await focus(x,y,true);}
+  else if(s.enter){const us=introWho(s.enter,true);const ps=[];
+   us.forEach((u,k)=>ps.push((async()=>{if(k)await wait(260*k);if(IN.skip)return;await introWalk(u,introPath(u,s.from,s.to||[u.home.r,u.home.c]));})()));
+   const all=Promise.all(ps);if(s.bg)IN.bg.push(all);else await all;}
+  else if(s.emote){for(const u of introWho(s.emote,false).filter(u=>!u.off)){ftext(u.x,u.y-62,s.t||'!','#ffd36b',true);}sfx('tick');await wait(420);}
+  else if(s.face){for(const u of introWho(s.face,false)){const d=s.d;if(d==='left'||d==='right'){u.face=d==='left'?-1:1;u.dir='sd';}else u.dir=d==='up'?'up':'dn';}}
+  else if(s.wait)await wait(s.wait);
+  else if(s.sync){await Promise.all(IN.bg);IN.bg=[];}}
+ if(!IN.skip)await Promise.all(IN.bg);
+ // the battle starts exactly as it always has
+ for(const u of G.units){const h=u.home;u.off=0;u.fade=1;u.walk=false;if(h){u.r=h.r;u.c=h.c;u.face=h.face;u.dir=h.dir;delete u.home;}if(!u.dead)place(u);}
+ $('#introSkip').hidden=true;document.body.classList.remove('intro');IN=null;G.busy=false;}
+$('#introSkip').addEventListener('click',e=>{e.stopPropagation();unlockAudio();sfx('tick');introSkipNow();});
 
 /* ================= INTERLUDE (towns, camps, world map) ================= */
 const SCENE={on:false,mode:null,key:null,hover:null,wbase:null,wk:0};
@@ -3901,6 +3979,10 @@ let BS_ON=LS.get('ec-bscene',1);
 // shoulder, the enemy further back facing it, a parallax backdrop and terrain pedestals cut from the mission painting
 // playback speed of rigged clips (owner 2026-11-18: faster)
 const BS_SPD={attack:3.5,run:1.8,hurt:2.2,die:2.0,idle:1.2};
+// dragon fire breath (owner 2026-11-21): a flame stream from the mouth that reaches and engulfs the target, instead of a fireball.
+// mx/my: the open mouth in the breath frame (painted flame removed 2026-11-21 16:15), as a share of the figure's height (toward the target / up from the feet)
+const BS_BREATH={hero_tala:{mx:.05,my:.725}};
+function bsBreathOf(u){const k=typeof animKeyOf==='function'?animKeyOf(u):null;return (k&&BS_BREATH[k])||(u&&u.hero&&BS_BREATH['hero_'+u.hero])||null;}
 let BS_DEPTH=LS.get('ec-bsdepth',1),BS_DISC=0;   // pedestals off (owner 2026-11-18); bsDisc() kept for later
 const BSC={on:false,skip:false,a:null,d:null,ahp:0,dhp:0,amax:1,dmax:1,ax:0,dx:0,ao:0,do_:0,af:0,df:0,alean:0,dlean:0,dfall:0,afall:0,fade:0,shake:0,fx:[],nums:[],bg:null,last:0,proj:null,apose:null,dpose:null,trail:[]};
 function bsKind(u){const w=W(u);if(!w)return isUndead(u)?'blunt':'claw';
@@ -3936,7 +4018,10 @@ async function battleScene(a,d,f,o){
    if(useShoot){const SP=BS_SPD.attack,rel=AI.shoot.dur/SP*(AI.shoot.hit||.7);   // draw, then loose the arrow at the release frame
     setClip(me,'shoot',false,SP);await bstep(rel*1000,()=>{});
     sfx(kind==='arrow'?'arrow':kind==='frost'?'frost':kind==='holy'?'holy':'fire');
-    B.trail=[];B.proj={kind,from:me,p:0,pose:null};await bstep(kind==='arrow'?220:300,p=>{B.proj.p=p;});B.proj=null;}
+    const BR=kind==='fire'&&bsBreathOf(att);
+    if(BR){const c=B.clip[me];if(c)c.hold=AI.shoot.dur*Math.min(.95,(AI.shoot.hit||.7)+.08);   // mouth stays open on the breath frame
+     B.trail=[];B.proj={kind,from:me,p:0,pose:null,breath:BR};await bstep(1000,p=>{B.proj.p=p;});B.proj=null;if(c)c.hold=null;}
+    else{B.trail=[];B.proj={kind,from:me,p:0,pose:null};await bstep(kind==='arrow'?220:300,p=>{B.proj.p=p;});B.proj=null;}}
    else if(ranged){if(isA)B.alean=-1;else B.dlean=-1;if(ps)setPose(ps.wind);
     await bstep(ps?230:160,p=>{if(isA)B.alean=-(1-p)*.6;else B.dlean=-(1-p)*.6;});
     if(ps)setPose(ps.hit);
@@ -3991,7 +4076,7 @@ function bsFigure(u,cx,footY,H,faceLeft,lean,fall,flash,pose,near,clip){
  const wide=L.mount||L.body==='wolf';
  g.fillStyle='rgba(0,0,0,.28)';ell(g,0,1*k,(wide?28:17)*k*s,5*k*s);g.fill();
  g.rotate((faceLeft?-1:1)*(lean*.12+fall*1.3));g.globalAlpha=1-fall*.6;
- const tmp=Object.assign({},u,{x:0,y:0,ox:0,oy:0,walk:false,flash:flash,dead:false,face:faceLeft?-1:1,done:false,frozen:0,swing:lean>0?lean:0,bsc:1,bsn:near?1:0,pose:pose||null,aclip:clip?{k:clip.k,loop:clip.loop,t:(performance.now()-clip.t0)/1000*clip.sp,p:clip.p}:null});
+ const tmp=Object.assign({},u,{x:0,y:0,ox:0,oy:0,walk:false,flash:flash,dead:false,face:faceLeft?-1:1,done:false,frozen:0,swing:lean>0?lean:0,bsc:1,bsn:near?1:0,pose:pose||null,aclip:clip?{k:clip.k,loop:clip.loop,t:clip.hold!=null?clip.hold:(performance.now()-clip.t0)/1000*clip.sp,p:clip.p}:null});
  g.scale(k,k);drawUnit(g,tmp,performance.now(),{portrait:true});
  g.restore();g.globalAlpha=1;}
 function drawBattleScene(now){
@@ -4042,7 +4127,9 @@ function drawBattleScene(now){
   const kF=Hfig/55,fromNear=BS_DEPTH&&((B.proj.from==='a')===B.aRight),tip=B.proj.pose?poseTip(B.proj.from==='a'?B.a:B.d,B.proj.pose,fr[0],fr[1],HW[B.proj.from]/55,B.proj.from==='a'?B.aRight:!B.aRight,fromNear):null;
   const sx0=tip?tip[0]:fr[0],sy0=tip?tip[1]:fr[1]-Hfig*.55,ex=to[0],ey=to[1]-HW[B.proj.from==='a'?'d':'a']*.5;
   const x=sx0+(ex-sx0)*p,y=sy0+(ey-sy0)*p-Math.sin(p*Math.PI)*Hfig*(B.proj.kind==='arrow'?.25:.1);
-  if(B.proj.kind==='fire'){bsFireball(x,y,ex-sx0,ey-sy0,Hfig,p);}
+  if(B.proj.breath){const fw=B.proj.from,tw=fw==='a'?'d':'a',hs=HW[fw],ht=HW[tw],dir=to[0]>fr[0]?1:-1;
+   bsBreath(fr[0]+dir*hs*B.proj.breath.mx,fr[1]-hs*B.proj.breath.my,to[0],to[1],ht,hs,p);}
+  else if(B.proj.kind==='fire'){bsFireball(x,y,ex-sx0,ey-sy0,Hfig,p);}
   else if(B.proj.kind==='frost'){drawIceShard(g,x,y,Math.atan2(ey-sy0,ex-sx0),Hfig*.09);if(Math.random()<.7)B.fx.push({k:'e',x,y,vx:(Math.random()-.5)*40,vy:20,age:0,life:400,c:Math.random()<.5?'#ffffff':'#bfe6ff',s:1.5+Math.random()*2});}
   else if(B.proj.kind==='holy'){drawHolyOrb(g,x,y,Hfig*.08);if(Math.random()<.6)B.fx.push({k:'e',x,y,vx:(Math.random()-.5)*40,vy:-20,age:0,life:450,c:Math.random()<.5?'#fff6c8':'#ffe08a',s:1.5+Math.random()*2});}
   else if(B.proj.kind==='shade'){drawShadeOrb(g,x,y,Hfig*.08);}
@@ -4113,6 +4200,30 @@ function bsDisc(u,x,y,H){const M=typeof MAPIMG!=='undefined'&&MAPIMG[G.mid];cons
  const sh=g.createRadialGradient(x-rx*.2,y-ry*.4,rx*.2,x,y,rx*1.05);sh.addColorStop(0,'rgba(255,250,230,.12)');sh.addColorStop(.7,'rgba(0,0,0,0)');sh.addColorStop(1,'rgba(0,0,0,.35)');g.fillStyle=sh;g.fillRect(x-rx,y-ry,rx*2,ry*2);
  g.restore();g.strokeStyle='rgba(20,14,10,.55)';g.lineWidth=1.5;g.beginPath();g.ellipse(x,y,rx,ry,0,0,Math.PI*2);g.stroke();}
 
+// dragon fire breath (2026-11-21): the stream grows from the mouth to the target (0-35%), roars over and around it (35-85%), then thins out.
+// mx,my: start of the stream; tx,ty: target's feet; ht: target height; hs: breather height
+function bsBreath(mx,my,tx,ty,ht,hs,p){const B=BSC,t=performance.now(),cx=tx,cy=ty-ht*.5;
+ const reach=Math.min(1,p/.35),fade=p>.85?1-(p-.85)/.15:1,eng=p<.3?0:Math.min(1,(p-.3)/.2)*fade;
+ const ex=mx+(cx+(tx>mx?1:-1)*ht*.15-mx)*reach,ey=my+(cy-my)*reach,len=Math.hypot(ex-mx,ey-my),ang=Math.atan2(ey-my,ex-mx);
+ g.save();g.globalCompositeOperation='lighter';
+ // the stream: overlapping flame blobs that widen toward the target, each wobbling on its own
+ const n=Math.max(8,Math.round(len/(hs*.035)));
+ for(let i=0;i<=n;i++){const u=i/n,wob=Math.sin(t/45+i*1.3)*hs*.025*u,x=mx+(ex-mx)*u-Math.sin(ang)*wob,y=my+(ey-my)*u+Math.cos(ang)*wob,
+  r=(hs*.05+ht*.17*u)*(1+Math.sin(t/60+i*2.1)*.12)*fade;if(r<=0)continue;
+  const gr=g.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,`rgba(255,245,200,${.42*fade})`);gr.addColorStop(.35,`rgba(255,180,70,${.36*fade})`);gr.addColorStop(.75,`rgba(240,80,25,${.22*fade})`);gr.addColorStop(1,'rgba(180,30,10,0)');
+  g.fillStyle=gr;g.beginPath();g.arc(x,y,r,0,7);g.fill();}
+ // engulf: a column of flame tongues licking up around the target
+ if(eng>0){const W=ht*.42;
+  const gl=g.createRadialGradient(cx,cy,0,cx,cy,ht*.75);gl.addColorStop(0,`rgba(255,200,90,${.5*eng})`);gl.addColorStop(.6,`rgba(255,110,30,${.28*eng})`);gl.addColorStop(1,'rgba(200,40,10,0)');g.fillStyle=gl;g.beginPath();g.arc(cx,cy,ht*.75,0,7);g.fill();
+  for(let k=0;k<9;k++){const ph=t/85+k*2.39,q=k/8-.5,bx=cx+q*W*1.6+Math.sin(ph)*W*.07,by=ty-ht*(.04+.1*Math.abs(Math.sin(ph*.5+k))),
+    hgt=ht*(.45+.5*Math.abs(Math.sin(ph*.7+k)))*(1-Math.abs(q)*.8)*eng,w=W*(.2+.06*Math.sin(ph*1.3)),sw=Math.sin(t/70+k)*w*.6;   // taller in the middle, rounded soft bases
+   const fg=g.createRadialGradient(bx,by-hgt*.25,0,bx,by-hgt*.25,hgt*.85+w);fg.addColorStop(0,'rgba(255,215,120,.48)');fg.addColorStop(.45,'rgba(255,130,35,.4)');fg.addColorStop(1,'rgba(220,50,15,0)');g.fillStyle=fg;
+   g.beginPath();g.moveTo(bx-w,by);g.bezierCurveTo(bx-w*.95,by-hgt*.45,bx+sw*.5,by-hgt*.75,bx+sw,by-hgt);g.bezierCurveTo(bx+sw*.4,by-hgt*.7,bx+w*.95,by-hgt*.45,bx+w,by);g.quadraticCurveTo(bx,by+w*.7,bx-w,by);g.closePath();g.fill();}}
+ g.restore();
+ // embers and smoke shed by the stream and the fire
+ if(!RM&&fade>.2){for(let k=0;k<2;k++){const u=Math.random(),x=mx+(ex-mx)*u,y=my+(ey-my)*u;B.fx.push({k:'e',x:x+(Math.random()-.5)*ht*.1,y:y+(Math.random()-.5)*ht*.1,vx:(Math.random()-.5)*80,vy:-40-Math.random()*60,age:0,life:400+Math.random()*350,c:Math.random()<.5?'#ffd27a':'#ff8a3a',s:1.5+Math.random()*2.5});}
+  if(eng>.3&&Math.random()<.35)B.fx.push({k:'smoke',x:cx+(Math.random()-.5)*ht*.5,y:cy-ht*.3,vx:(Math.random()-.5)*30,vy:-40-Math.random()*40,s:ht*(.07+Math.random()*.06),age:0,life:900+Math.random()*500});}}
+
 const MISSIONS=[];const SPK={};
 /* ================= ACT I — THE STABLE BOY ================= */
 Object.assign(SPK,{
@@ -4180,14 +4291,34 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[5,16]},
   {w:'narr',x:'Fallowmere Keep, on the edge of the Marchlands. An hour before dawn.'},
+  {enter:'grak',from:[5,22],bg:1},
+  {wait:300},
+  {enter:'goblinthief',from:[4,22],bg:1},
+  {wait:500},
+  {enter:'goblin',from:[6,22],bg:1},
+  {wait:400},
+  {enter:'goblinarcher',from:[5,22]},
+  {sync:1},
+  {w:'grak',x:'Horses! Big fat sleepy horses! Grak smells them from here.'},
+  {w:'grak',x:'Quiet, quiet. Nobody wakes the tall ones.'},
+  {pan:[4,3]},
   {w:'rowan',x:'Easy, Thistle. Easy, girl. What’s got you kicking?'},
   {w:'narr',x:'Smoke. Torchlight. Thin, giggling voices beyond the hay barn.'},
-  {w:'kael',x:'Rowan! Goblins over the north wall. Father’s rousing the guard.'},
+  {enter:'rowan',from:[3,2]},
+  {face:'rowan',d:'right'},
+  {emote:'rowan',t:'!'},
+  {enter:'kael',from:[13,4]},
+  {w:'kael',x:'Rowan! Goblins out of the east wood. Father’s rousing the guard.'},
   {w:'rowan',x:'They’ll go for the horses. They always go for the horses.'},
   {w:'kael',x:'Then stay behind me. I’ve a sword and six years of lessons. You’ve got...'},
   {w:'rowan',x:'A pitchfork. And I know every plank of this yard.'},
-  {w:'kael',x:'A stable boy with a pitchfork. They’ll sing songs about it. Short ones.'}
+  {w:'kael',x:'A stable boy with a pitchfork. They’ll sing songs about it. Short ones.'},
+  {enter:'party',from:[13,4]}
  ],
  post:[
   {w:'edric',x:'Not bad, the pair of you. Kael, your footwork was lovely.'},
@@ -4255,10 +4386,20 @@ MISSIONS.push({
   ],spawn:[['wolf',2,12,19,{pal:'beast',ai:'aggr'}],['wolf',2,0,9,{pal:'beast',ai:'aggr'}]]}
  ],
  pre:[
-  {w:'edric',x:'The fever’s in the barracks. I need Sister Elowen from Wolfwood, and I need her by nightfall.'},
+
+ ],
+ intro:[
+  {cut:[5,5]},
+  {w:'narr',x:'Fever in the Fallowmere barracks. Sir Edric needs Sister Elowen from Wolfwood, and he needs her by nightfall.'},
   {w:'kael',x:'A healer run? I was hoping for a dragon.'},
-  {w:'edric',x:'Take the road and stay on it. Bandits have been bold since the Regent pulled his patrols.'},
+  {w:'narr',x:'Take the road and stay on it, he said. Bandits have been bold since the Regent pulled his patrols.'},
   {w:'narr',x:'Half a day later, the road bends past a shepherd’s cottage.'},
+  {enter:'rowan',from:[5,-1],bg:1},
+  {wait:300},
+  {enter:'kael',from:[5,-1]},
+  {sync:1},
+  {pan:[5,12]},
+  {wait:500},
   {w:'rowan',x:'That’s a lot of smoke for a cooking fire.'},
   {w:'kael',x:'And a lot of blades for a sheep farm. Come on!'}
  ],
@@ -4331,11 +4472,20 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[5,9]},
   {w:'narr',x:'The Millrace runs fast and cold. Only one bridge crosses it for ten miles.'},
-  {w:'elowen',x:'The miller says the ogre keeps a slave on a chain. Some poor half-blood, to turn the wheel.'},
+  {pan:[5,16]},
+  {emote:'murg',t:'!'},
+  {w:'narr',x:'The miller says the ogre who holds it keeps a slave on a chain.'},
+  {pan:[6,3]},
+  {enter:'party',from:[5,-1]},
+  {w:'elowen',x:'Some poor half-blood, he said. Chained up to turn the wheel.'},
   {w:'rowan',x:'Then we free him while we’re at it.'},
   {w:'kael',x:'Listen to him. A week ago he was mucking stalls.'},
-  {w:'rowan',x:'Still am. This is just a bigger stall.'}
+  {w:'rowan',x:'I still muck stalls. This is just a bigger one.'}
  ],
  post:[
   {w:'gorm',x:'Murg is gone. Chain is gone. Gorm does not know what to do with hands.'},
@@ -4410,13 +4560,28 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[5,11]},
   {w:'narr',x:'Ashby. Thirty roofs, one well, and the rye field where a baby was found eighteen years ago.'},
+  {pan:[3,10]},
+  {wait:600},
+  {pan:[10,10]},
+  {enter:'rowan',from:[13,10],bg:1},
+  {wait:300},
+  {enter:'kael',from:[13,11],bg:1},
+  {wait:300},
+  {enter:'elowen',from:[13,10],bg:1},
+  {wait:300},
+  {enter:'gorm',from:[13,11]},
+  {sync:1},
   {w:'rowan',x:'Sir Edric found me in that rye. Named me for the village, since nobody else had named me anything.'},
-  {w:'elowen',x:'Rowan... the rye is burning.'},
+  {pan:[1,7]},
+  {w:'elowen',x:'Rowan... there are soldiers in the rye.'},
   {w:'gorm',x:'Men in red. Gorm does not like men in red.'},
-  {w:'kael',x:'Regent’s collectors. Father says never cross them. It’s the one rule he has never broken.'},
-  {w:'rowan',x:'Your father isn’t here.'},
-  {w:'kael',x:'Our father. You only say “your” when you’re about to do something stupid.'}
+  {w:'rowan',x:'The Regent’s collectors. Sir Edric has one rule: never cross them. Well, he isn’t here.'},
+  {w:'kael',x:'Our father. You only call him Sir Edric when you’re about to do something stupid.'}
  ],
  post:[
   {w:'villager',x:'Thank you. But they’ll be back for the coin, and twice as many.'},
@@ -4484,12 +4649,17 @@ MISSIONS.push({
   ],spawn:[['soldier',4,2,14,{pal:'R',ai:'aggr'}],['pikeman',4,2,13,{pal:'R',ai:'aggr'}]]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[6,7]},
   {w:'narr',x:'Night on the Brackenford road. The toll house squats behind stone walls.'},
-  {w:'kael',x:'If this goes wrong, I was never here.'},
-  {w:'rowan',x:'If this goes right, you’ll want everyone to know you were.'},
-  {w:'kael',x:'...That is annoyingly true.'},
+  {pan:[11,5]},
+  {enter:'party',from:[15,2]},
+  {w:'rowan',x:'When this goes right, everyone will want to say they were here.'},
+  {w:'kael',x:'...Annoyingly true. But if it goes wrong, I was never here.'},
   {w:'elowen',x:'We take back what’s Ashby’s. Nothing more.'},
-  {w:'gorm',x:'Maybe one small cup.'}
+  {w:'gorm',x:'Gorm takes back nothing. Maybe one small cup.'}
  ],
  post:[
   {w:'narr',x:'Sacks of coin, each stamped with a village name. Ashby. Wolfwood. Fallowmere.'},
@@ -4548,7 +4718,6 @@ MISSIONS.push({
    {w:'edric',x:'Nobody is making you, Captain. That’s the trouble with orders.'}
   ]},
   {when:{turn:2},scene:[
-   // farewell at the start of turn 2 (owner 2026-11-21): Edric now holds the gate, so he lives to say it
    {w:'edric',x:'Rowan. Come here. No, don’t argue for once.'},
    {w:'edric',x:'There’s a letter in my saddlebag. And take this ring. It was never really mine.'},
    {w:'rowan',x:'Come with us. Please. You can’t hold them alone.'},
@@ -4567,12 +4736,28 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[11,11]},
   {w:'narr',x:'Midnight. Hoofbeats on the south road. Too many, too fast.'},
+  {enter:'sable',from:[13,11],bg:1},
+  {wait:300},
+  {enter:'blackrider',from:[13,11],bg:1},
+  {wait:500},
+  {enter:'xbowman',from:[13,11],bg:1},
+  {wait:300},
+  {enter:'soldier',from:[13,11]},
+  {sync:1},
+  {pan:[7,12]},
+  {enter:'edric',from:[9,11]},
+  {enter:'party',from:[7,6]},
   {w:'edric',x:'Black barding. Regent colours. They’re not here for taxes.'},
   {w:'rowan',x:'Who are they after?'},
+  {pan:[2,11]},
   {w:'edric',x:'Get your friends. Take the postern. Don’t stop until the trees.'},
   {w:'kael',x:'We run? Father, I can fight! Let me stand with you. Just once, let me!'},
-  {w:'edric',x:'I know you can fight. Tonight I need you to do something harder.'}
+  {w:'edric',x:'Kael, I know you can fight. Tonight I need you to do something harder.'}
  ],
  post:[
   {w:'narr',x:'From the ridge, Fallowmere Keep burns against the sky.'},
@@ -4656,11 +4841,18 @@ MISSIONS.push({
   ],spawn:[['ghoul',6,2,12,{pal:'hollow',ai:'aggr'}],['ghoul',6,10,10,{pal:'hollow',ai:'aggr'}]]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[6,4]},
   {w:'narr',x:'The Drowned Fens. Old bog villages sank here long ago. The roads went with them.'},
+  {enter:'party',from:[6,-1]},
   {w:'villager',x:'We can’t go back to the keep. Where are you taking us?'},
   {w:'rowan',x:'East. There’s a causeway to the river villages. You’ll be safe there.'},
+  {pan:[1,12]},
+  {wait:600},
   {w:'kael',x:'He says that like he knows.'},
-  {w:'rowan',x:'I don’t. But somebody has to say it.'}
+  {w:'rowan',x:'I don’t know that. But somebody has to say it.'}
  ],
  post:[
   {w:'villager',x:'We made it. Gods, we actually made it.'},
@@ -4741,9 +4933,23 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[11,4]},
   {w:'narr',x:'Thornveil. The orchard here has been dead for a hundred years.'},
+  {enter:'rowan',from:[14,-1],bg:1},
+  {wait:300},
+  {enter:'kael',from:[14,-1],bg:1},
+  {wait:300},
+  {enter:'elowen',from:[14,-1],bg:1},
+  {wait:300},
+  {enter:'gorm',from:[14,-1]},
+  {sync:1},
   {w:'kael',x:'Cheerful place. I can see why Father sent us.'},
   {w:'rowan',x:'Someone’s fighting up there. Look, at the tower door!'},
+  {pan:[3,7]},
+  {emote:'maelis',t:'!'},
   {w:'narr',x:'Grey fire flashes in the doorway. Shadows swirl around a lone figure.'},
   {w:'elowen',x:'Whoever she is, she won’t last alone.'}
  ],
@@ -4818,9 +5024,18 @@ MISSIONS.push({
   ],spawn:[['bandit',6,10,10,{pal:'bandit',ai:'aggr'}],['bandit',6,8,2,{pal:'bandit',ai:'aggr'}]]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[4,6]},
   {w:'narr',x:'Brackenford, the river town. Market day, and twice as many pockets as people.'},
+  {enter:'party',from:[4,-1]},
   {w:'maelis',x:'Keep your purses close. And your letters closer.'},
+  {enter:'nim',from:[4,9]},
   {w:'rowan',x:'My pouch. Edric’s letter! It’s gone!'},
+  {pan:[1,2]},
+  {emote:'nim',t:'!'},
+  {wait:300},
   {w:'kael',x:'There. The redhead on the gutter, waving at you.'},
   {w:'maelis',x:'Oh, I like her. Go and catch her.'}
  ],
@@ -4907,12 +5122,19 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[6,7]},
   {w:'narr',x:'The Brackenford lists. Bunting, sausages, and a thousand people shouting.'},
+  {enter:'party',from:[6,-1],bg:1},
+  {enter:'enemies',from:[6,15]},
+  {sync:1},
   {w:'maelis',x:'A knight’s name opens doors. You’ll need doors opened, soon.'},
   {w:'hallam',x:'One squire’s place, for the fighter who shows me the most! Fighters to the sand!'},
+  {w:'rowan',x:'I’m not here for the prize. I’ll watch everyone’s back.'},
   {w:'kael',x:'This one’s mine, Rowan. I’ve trained for it since I was six. Father promised to bring me.'},
-  {w:'rowan',x:'Then win it. I’ll watch your back.'},
-  {w:'kael',x:'For once, just watch.'}
+  {w:'kael',x:'Don’t watch my back. For once, just watch.'}
  ],
  post:[
   {w:'hallam',x:'Young Mardane. The finest blade I’ve seen in ten years. You won every bout you fought.'},
@@ -4987,11 +5209,22 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[4,7]},
   {w:'narr',x:'Glimmerfall. A river frozen mid-plunge, white and blue and silent.'},
-  {w:'maelis',x:'Behind that ice is a blade. It has waited eighteen years for one hand.'},
+  {pan:[11,3]},
+  {enter:'party',from:[11,-1]},
+  {w:'narr',x:'Behind that ice, Maris says, a blade has waited eighteen years for one hand. Rowan’s.'},
   {w:'rowan',x:'Mine? Why mine?'},
   {w:'maelis',x:'Get to the falls and I’ll tell you. That’s a promise, not a riddle.'},
+  {pan:[4,8]},
+  {emote:'rimeback',t:'!'},
   {w:'elowen',x:'Something huge is moving on the lake.'},
+  {pan:[4,12]},
+  {emote:'shinobi',t:'!'},
+  {wait:300},
   {w:'nim',x:'And something small and pointy is moving in the trees. Lovely trip. Glad I’m only nearby.'}
  ],
  post:[
@@ -5089,11 +5322,16 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[6,8]},
   {w:'narr',x:'Three nights south of the Frozen Falls. The company camps beside the Highcrest road.'},
+  {enter:'party',from:[6,-1]},
   {w:'kael',x:'Second night with no fire on the hills. Either the bandits have gone home, or something’s eating them.'},
   {w:'nim',x:'Something’s watching us. I can’t see it. That’s how I know it’s good.'},
   {w:'maelis',x:'Bank the fire high. Whatever comes tonight hates the light more than it hates us.'},
-  {w:'rowan',x:'Then we stay in the light, and we stay together.'}
+  {w:'rowan',x:'We stay in the light tonight, and we stay together.'}
  ],
  post:[
   {w:'narr',x:'The Crows melt back into the trees. One stays, bound at the wrists, and looks at Rowan as if he were a sum that does not add up.'},
@@ -5170,10 +5408,18 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[6,4]},
   {w:'narr',x:'The Silverwood. Old trees, silver bark, and a silence that feels like listening.'},
+  {enter:'party',from:[6,-1]},
   {w:'maelis',x:'The elves will not ask why we came. They will decide whether we leave.'},
   {w:'elowen',x:'Something’s wrong with the trees. They smell like the fens did.'},
+  {pan:[4,16]},
+  {emote:'ogre',t:'!'},
   {w:'narr',x:'Ahead, a wardwood the size of a tower turns, slowly, toward the road. Its bark has gone black and wet.'},
+  {emote:'lyra',t:'!'},
   {w:'lyra',x:'Stop there, humans. One more step and you’re in my forest.'}
  ],
  post:[
@@ -5253,9 +5499,16 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[6,11]},
   {w:'narr',x:'The heart of the Silverwood. In a clearing ringed by stones, one wardwood still stands green.'},
+  {pan:[6,6]},
+  {enter:'party',from:[6,-1]},
   {w:'lyra',x:'Oakheart. The oldest of them. He hasn’t woken in three hundred years.'},
   {w:'maelis',x:'He has woken once. I was there. He did not enjoy it.'},
+  {pan:[2,10]},
   {w:'narr',x:'The rot is moving through the trees around them, toward the green one.'},
   {w:'lyra',x:'If he dies, the whole forest dies with him. Wake slow, old man. We’ll hold the door.'}
  ],
@@ -5279,42 +5532,51 @@ MISSIONS.push({
  brief:"Ogres of the Ashfang clans have Deepforge's gate under siege, with catapults on the hills. Come down the north pass and break them.",
  obj:"Defeat Zagra. Brom must survive.",
  map:[
-  'MMMMMMMM....MMMMMMMMMM',
-  'MMMMMMMH....HMMMMMMMMM',
-  'MMMM....=......MMMM#MM',
-  'MM......=........MM#MM',
-  'M..n..H.=.........M#RR',
-  '...H....=.........M#RR',
-  '=========.........=GRR',
-  '...n..H...........M#RR',
-  'M...n.............M#RR',
-  'MM......H........MM#MM',
-  'MMMM...........MMMM#MM',
-  'MMMMMMMMH..MMMMMMMMMMM',
-  'MMMMMMMMMMMMMMMMMMMMMM'
+  'MMMMMMMMMMMM....MMMMMMMMMMMM',
+  'MMMMMMMMMMMH....HMMMMMMMMMMM',
+  'MMMM.......H....H.......MMMM',
+  'MMM...n...MMM..MMM.......#RR',
+  'MM..n.....MMM..MMM...H...#RR',
+  'M...........H..H.........#RR',
+  '..n..........o........H..#RR',
+  '...n.....................GRR',
+  '=========================GRR',
+  '..n...........o.......H..#RR',
+  'M...n...HH..........o....#RR',
+  'MM.....HHHH.....HHH......#RR',
+  'MMM...H....x...H.........#RR',
+  'MMMMM........HH.......MMMMMM',
+  'MMMMMMMM...........MMMMMMMMM',
+  'MMMMMMMMMMMMMMMMMMMMMMMMMMMM'
  ],
- deploy:[[1,9],[1,10],[0,9],[0,10],[2,9],[2,10],[0,8],[0,11]],
+ deploy:[[0,12],[0,13],[0,14],[0,15],[1,12],[1,13],[1,14],[1,15],[2,13],[2,14]],
  forced:["rowan"],
  guests:[
-  {cls:'guardsman',lv:11,name:'Brom',r:6,c:20,side:'G',tag:'brom'}
+  {cls:'guardsman',lv:11,name:'Brom',r:7,c:26,side:'G',tag:'brom'},
+  {cls:'guardsman',lv:10,name:'Deepforge Shield',r:6,c:26,side:'G',tag:'dwarf',plan:'dwarfshield',ai:'aggr'},
+  {cls:'guardsman',lv:10,name:'Deepforge Shield',r:8,c:26,side:'G',tag:'dwarf',plan:'dwarfshield',ai:'aggr'},
+  {cls:'guardsman',lv:10,name:'Deepforge Shield',r:5,c:26,side:'G',tag:'dwarf',plan:'dwarfshield',ai:'aggr'},
+  {cls:'guardsman',lv:10,name:'Deepforge Shield',r:9,c:26,side:'G',tag:'dwarf',plan:'dwarfshield',ai:'aggr'}
  ],
  enemies:[
-  ['ogre',11,6,2,{pal:'gob',ai:'guard',boss:1,name:'Zagra',tag:'zagra',gold:300}],
-  ['xbowman',10,4,6,{pal:'gob',ai:'stay',name:'Ogre Catapult',plan:'catapult',sk:['barrage']}],
-  ['xbowman',10,7,6,{pal:'gob',ai:'stay',name:'Ogre Catapult',plan:'catapult',sk:['barrage']}],
-  ['ogre',9,6,17,{pal:'gob',ai:'aggr'}],
-  ['ogre',9,5,17,{pal:'gob',ai:'aggr'}],
-  ['ogre',9,7,17,{pal:'gob',ai:'aggr'}],
-  ['goblin',9,3,10,{pal:'gob',ai:'aggr'}],
-  ['goblin',9,8,10,{pal:'gob',ai:'aggr'}],
-  ['goblin',9,8,12,{pal:'gob',ai:'aggr'}],
-  ['goblin',9,9,4,{pal:'gob',ai:'guard'}],
-  ['goblinarcher',9,4,12,{pal:'gob',ai:'guard'}],
-  ['goblinarcher',9,8,15,{pal:'gob',ai:'guard'}]
+  ['ogre',11,8,4,{pal:'gob',ai:'guard',boss:1,name:'Zagra',tag:'zagra',gold:300}],
+  ['xbowman',10,6,22,{pal:'gob',ai:'stay',name:'Ogre Catapult',plan:'catapult',sk:['barrage']}],
+  ['xbowman',10,9,22,{pal:'gob',ai:'stay',name:'Ogre Catapult',plan:'catapult',sk:['barrage']}],
+  ['ogre',9,6,24,{pal:'gob',ai:'aggr'}],
+  ['ogre',9,7,24,{pal:'gob',ai:'aggr'}],
+  ['ogre',9,8,24,{pal:'gob',ai:'aggr'}],
+  ['ogre',9,9,24,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,5,9,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,10,13,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,4,19,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,12,17,{pal:'gob',ai:'aggr'}],
+  ['goblin',9,4,6,{pal:'gob',ai:'guard'}],
+  ['goblinarcher',9,5,15,{pal:'gob',ai:'guard'}],
+  ['goblinarcher',9,11,17,{pal:'gob',ai:'guard'}]
  ],
  chests:[
-  {r:4,c:3,kind:'wood',loot:{item:'ironmace'}},
-  {r:11,c:9,kind:'hidden',loot:{item:'seal'}}
+  {r:4,c:4,kind:'wood',loot:{item:'ironmace'}},
+  {r:12,c:11,kind:'hidden',loot:{item:'seal'}}
  ],
  win:{type:'boss'},
  lose:{protect:['brom']},
@@ -5329,7 +5591,9 @@ MISSIONS.push({
    {w:'maelis',x:'Watch the ground. Where it darkens, a boulder follows. Do not be standing there.'}
   ]},
   {when:{turn:4},scene:[
-  ],spawn:[['goblinthief',9,6,0,{pal:'gob',ai:'thief'}],['goblinthief',9,5,0,{pal:'gob',ai:'thief'}]]},
+  ],spawn:[['goblinthief',9,8,0,{pal:'gob',ai:'thief'}],['goblinthief',9,7,0,{pal:'gob',ai:'thief'}]]},
+  {when:{turn:6},scene:[
+  ],spawn:[['goblin',9,14,10,{pal:'gob',ai:'aggr'}],['goblin',9,14,12,{pal:'gob',ai:'aggr'}]]},
   {when:{dead:'zagra'},scene:[
    {w:'zagra',x:'Grull... will hear... of the little king...'},
    {w:'kael',x:'Good. Tell him to spell it right.'}
@@ -5339,7 +5603,15 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[8,21]},
   {w:'narr',x:'Deepforge. A dwarven gate cut into the mountain, and an ogre army camped outside it.'},
+  {pan:[8,6]},
+  {emote:'zagra',t:'!'},
+  {pan:[2,14]},
+  {enter:'party',from:[-1,13]},
   {w:'nim',x:'That’s a lot of ogres. And they brought throwing machines. Rude.'},
   {w:'maelis',x:'Zagra’s banner. Grull Bonegnaw’s right hand. If the gate falls, the Deep Roads fall with it.'},
   {w:'kael',x:'And the dwarves will thank whoever saves it. Loudly, I hope. In front of witnesses.'}
@@ -5350,7 +5622,10 @@ MISSIONS.push({
   {w:'brom',x:'Burned out of the Ironvault twenty years back. My father, my brothers, all of them. I owe them a hold.'},
   {w:'brom',x:'I’ll not rest till it’s paid. And that takes an army. You seem to be collecting one.'},
   {w:'rowan',x:'You don’t have to come. Your gate needs you.'},
-  {w:'brom',x:'My gate has three hundred dwarves. My dead have only me. I’m coming.'}
+  {w:'brom',x:'My gate has three hundred dwarves. My dead have only me. I’m coming.'},
+  {w:'brom',x:'That hayfork on your pack. Where does a stable boy get Deepforge tines?'},
+  {w:'rowan',x:'It hung in the stables. Edric’s.'},
+  {w:'brom',x:'Hm. Keep it close, lad.'}
  ],
  joins:[],
  reward:{gold:360,items:[]},
@@ -5377,7 +5652,7 @@ MISSIONS.push({
   '####Z####.###...#..ZR#',
   '######################'
  ],
- deploy:[[1,1],[1,2],[1,3],[3,1],[3,2],[3,3],[4,1],[4,2]],
+ deploy:[[1,1],[1,2],[1,3],[3,1],[3,2],[3,3]],
  forced:["rowan"],
  guests:[
   {cls:'cart',lv:1,name:'Ore Cart',r:2,c:2,side:'B',tag:'cart',still:true},
@@ -5389,8 +5664,6 @@ MISSIONS.push({
   ['goblin',9,8,14,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
   ['goblin',9,3,12,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
   ['goblin',9,10,12,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
-  ['goblin',9,6,17,{pal:'gob',ai:'aggr'}],
-  ['goblin',9,9,10,{pal:'gob',ai:'aggr'}],
   ['goblin',9,1,11,{pal:'gob',ai:'guard'}],
   ['goblinarcher',9,4,19,{pal:'gob',ai:'guard'}],
   ['goblinarcher',9,10,17,{pal:'gob',ai:'guard'}],
@@ -5419,9 +5692,26 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[2,4]},
   {w:'narr',x:'The Deep Roads run under Deepforge, mile after mile of dark. Ore carts sit on the rails where the miners left them.'},
+  {enter:'rowan',from:[2,-1],bg:1},
+  {wait:300},
+  {enter:'kael',from:[2,-1],bg:1},
+  {wait:300},
+  {enter:'elowen',from:[2,-1],bg:1},
+  {wait:300},
+  {enter:'gorm',from:[2,-1],bg:1},
+  {wait:300},
+  {enter:'maelis',from:[2,-1],bg:1},
+  {wait:300},
+  {enter:'nim',from:[2,-1]},
+  {sync:1},
   {w:'brom',x:'The hold needs that ore up the lift. Goblins have the tunnels. Push the carts, smash the goblins. Simple.'},
   {w:'nim',x:'Something’s knocking behind that wall.'},
+  {pan:[2,13]},
   {w:'narr',x:'Faint, steady, very annoyed: knock, knock, knock-knock.'},
   {w:'fizzwick',x:'Hello? Hello! If anyone out there has a hammer, I will pay you in compliments!'}
  ],
@@ -5460,19 +5750,16 @@ MISSIONS.push({
   '#.....###..x...#...E.#',
   '######################'
  ],
- deploy:[[1,1],[1,2],[2,1],[2,2],[1,3],[2,3]],
+ deploy:[[1,1],[1,2],[2,1],[2,2],[1,3]],
  forced:["rowan"],
  guests:[],
  enemies:[
   ['goblinthief',10,1,15,{pal:'gob',ai:'thief'}],
   ['goblinthief',10,3,19,{pal:'gob',ai:'thief'}],
   ['goblinthief',10,8,17,{pal:'gob',ai:'thief'}],
-  ['goblinthief',10,11,3,{pal:'gob',ai:'thief'}],
-  ['goblinthief',10,6,18,{pal:'gob',ai:'thief'}],
   ['goblin',10,7,10,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
   ['goblin',10,9,13,{pal:'gob',ai:'aggr',plan:'sapper',sk:['blast']}],
-  ['goblinarcher',10,4,16,{pal:'gob',ai:'guard'}],
-  ['goblinarcher',10,10,18,{pal:'gob',ai:'guard'}]
+  ['goblinarcher',10,4,16,{pal:'gob',ai:'guard'}]
  ],
  chests:[
   {r:1,c:17,kind:'wood',loot:{gold:120}},
@@ -5489,7 +5776,13 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[2,3]},
+  {enter:'party',from:[1,-1]},
   {w:'fizzwick',x:'Before the goblins came, I found a gnome mine nobody had opened in two hundred years. Inside it, the Golden Gear.'},
+  {pan:[5,11]},
   {w:'brom',x:'A gear. You want us to risk our necks for a gear.'},
   {w:'fizzwick',x:'The gear that runs the Great Forge of Ironvault! With it I could build anything. Also it’s very shiny.'}
  ],
@@ -5565,8 +5858,21 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[6,9]},
   {w:'narr',x:'Brackenford again, the river docks at dusk. Kuro has walked beside the company for three weeks and never once been asked where she is going.'},
+  {enter:'kuro',from:[5,-1],bg:1},
+  {wait:500},
+  {enter:'party',from:[5,-1]},
+  {sync:1},
   {w:'kuro',x:'There is a boat coming. Black sail. It is for me.'},
+  {pan:[9,18]},
+  {enter:'raven',from:[10,22],bg:1},
+  {wait:400},
+  {enter:'banditarcher',from:[10,22]},
+  {sync:1},
   {w:'nim',x:'Your clan?'},
   {w:'kuro',x:'My owner. Mother Raven does not forgive a lost contract. Or a lost knife.'},
   {w:'rowan',x:'Then she can say so to all of us.'},
@@ -5589,7 +5895,7 @@ MISSIONS.push({
 MISSIONS.push({
  id:'m17',num:'17',name:"The Shipwreck Coast",act:2,style:'plains',
  brief:"A Jade Isles ship lies broken on the Saltreach sands. The tide is turning, and the drowned are crawling out of the surf.",
- obj:"Get 4 survivors up the cliff path. Rowan must live.",
+ obj:"Get 3 survivors up the cliff path. Rowan must live.",
  tide:[[10,4],[9,6],[8,8],[7,10]],
  map:[
   'MMMMMMMHH=EHHMMMMMMMMM',
@@ -5606,22 +5912,19 @@ MISSIONS.push({
   'WWWWWWWWWWWWWWWWWWWWWW',
   'WWWWWWWWWWWWWWWWWWWWWW'
  ],
- deploy:[[1,9],[1,10],[2,9],[2,10],[3,10],[3,11],[2,11],[1,6]],
+ deploy:[[1,9],[1,10],[2,9],[2,10],[3,10],[3,11],[2,11]],
  forced:["rowan"],
  guests:[
   {cls:'civ',lv:3,name:'Sailor',r:8,c:7,side:'B',tag:'civ'},
   {cls:'civ',lv:3,name:'Sailor',r:9,c:10,side:'B',tag:'civ'},
   {cls:'civ',lv:3,name:'Sailor',r:8,c:13,side:'B',tag:'civ'},
   {cls:'civ',lv:3,name:'Sailor',r:10,c:18,side:'B',tag:'civ'},
-  {cls:'civ',lv:3,name:'Sailor',r:7,c:3,side:'B',tag:'civ'},
   {cls:'civ',lv:3,name:'Sailor',r:9,c:5,side:'B',tag:'civ'},
   {cls:'duelist',lv:12,name:'Jin',r:7,c:12,side:'G',tag:'jin'}
  ],
  enemies:[
   ['ghoul',10,10,2,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],
-  ['ghoul',10,10,9,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],
   ['ghoul',10,10,15,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],
-  ['ghoul',10,10,20,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],
   ['skelarcher',10,3,19,{pal:'hollow',ai:'guard'}],
   ['skelarcher',10,2,2,{pal:'hollow',ai:'guard'}]
  ],
@@ -5629,14 +5932,14 @@ MISSIONS.push({
   {r:8,c:4,kind:'wood',loot:{item:'lucky'}},
   {r:9,c:17,kind:'wood',loot:{gold:250}}
  ],
- win:{type:'escape',who:'civ',need:4},
+ win:{type:'escape',who:'civ',need:3},
  events:[
   {when:{start:1},scene:[
    {w:'jin',x:'Whoever you are, help the sailors up the cliff. I will hold the water.'},
    {w:'maelis',x:'The tide comes up a row at a time. Watch the sand darken. Do not be standing on it when the sea arrives.'}
   ]},
   {when:{turn:2},scene:[
-  ],spawn:[['ghoul',10,11,13,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],['ghoul',10,11,1,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}]]},
+  ],spawn:[['ghoul',10,11,13,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],['ghoul',10,11,1,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],['ghoul',10,11,9,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],['ghoul',10,11,20,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}]]},
   {when:{turn:3},scene:[
   ],spawn:[['ghoul',10,11,18,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}],['ghoul',10,11,6,{pal:'hollow',ai:'aggr',plan:'seaghoul',sk:['seaborn']}]]},
   {when:{turn:4},scene:[
@@ -5652,9 +5955,28 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[8,10]},
   {w:'narr',x:'Saltreach, on the eastern coast. A storm has torn a Jade Isles ship apart on the sandbars.'},
+  {pan:[3,10]},
+  {enter:'rowan',from:[-1,10],bg:1},
+  {wait:300},
+  {enter:'kael',from:[-1,10],bg:1},
+  {wait:300},
+  {enter:'elowen',from:[-1,10],bg:1},
+  {wait:300},
+  {enter:'gorm',from:[-1,10],bg:1},
+  {wait:300},
+  {enter:'maelis',from:[-1,10],bg:1},
+  {wait:300},
+  {enter:'nim',from:[-1,10]},
+  {sync:1},
   {w:'elowen',x:'There are people on the wreck. Still alive.'},
   {w:'lyra',x:'The tide turns within the hour. Anything left on that sand drowns.'},
+  {pan:[9,9]},
+  {emote:'ghoul',t:'!'},
   {w:'narr',x:'Pale shapes rise out of the surf, crawling up the beach toward the survivors.'},
   {w:'kuro',x:'Sea-dead. And there. A Heron Clan sword. I would know that stance anywhere.'}
  ],
@@ -5693,7 +6015,7 @@ MISSIONS.push({
   'VVV..VVVVVVVVVVVVV..VV',
   'VVVVVVVVVVVVVVVVVVVVVV'
  ],
- deploy:[[5,10],[5,11],[6,9],[6,10],[6,11],[6,12],[7,10],[7,11]],
+ deploy:[[5,10],[5,11],[6,9],[6,10],[6,11],[6,12]],
  forced:["rowan"],
  guests:[
   {cls:'civ',lv:1,name:'Gryphon Nest',r:2,c:3,side:'B',tag:'nest',still:true},
@@ -5733,8 +6055,25 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[5,10]},
   {w:'narr',x:'Skyreach. Cliff eyries above the clouds, where gryphons nest and the wind never stops.'},
+  {enter:'rowan',from:[3,2],bg:1},
+  {wait:300},
+  {enter:'kael',from:[3,2],bg:1},
+  {wait:300},
+  {enter:'elowen',from:[3,2],bg:1},
+  {wait:300},
+  {enter:'gorm',from:[3,2],bg:1},
+  {wait:300},
+  {enter:'maelis',from:[3,2],bg:1},
+  {wait:300},
+  {enter:'nim',from:[3,2]},
+  {sync:1},
   {w:'lyra',x:'Riders. Wyverns. They’re coming for the nests.'},
+  {enter:'seren',from:[-2,13]},
   {w:'narr',x:'A gryphon rider drops out of the sky beside them, lance down, breathing hard.'},
   {w:'seren',x:'Seren Valewind. If you’ve come to help, help. If you’ve come to gawk, gawk from over there.'}
  ],
@@ -5822,12 +6161,22 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[5,11]},
+  {enter:'ivra',from:[4,11],bg:1},
+  {enter:'hode',from:[5,11],bg:1},
+  {enter:'pell',from:[6,11]},
   {w:'narr',x:'The Council of Stone. Eight standing stones on a bare hill, where the peoples swore the first oath a thousand years ago.'},
+  {enter:'party',from:[5,-1]},
   {w:'narr',x:'Three envoys wait inside the circle: an elf of the Silverwood, a dwarf of Deepforge, a rider of Skyreach.'},
   {w:'ivra',x:'The Silverwood will hear the heir.'},
   {w:'hode',x:'Deepforge will hear him. We do not promise to like him.'},
   {w:'pell',x:'Skyreach will hear him. The gryphons have not decided.'},
-  {w:'rowan',x:'I didn’t come to be heard. I came to ask.'}
+  {w:'rowan',x:'I didn’t come to be heard. I came to ask.'},
+  {pan:[5,3]},
+  {enter:'blackrider',from:[5,-1]}
  ],
  post:[
   {w:'narr',x:'The envoys look at each other, then at Rowan, then at the sword on his hip.'},
@@ -5852,50 +6201,60 @@ MISSIONS.push({
  brief:"Cinderhold, an old border fort full of refugees. General Morrow has brought the Regent's army to its gate.",
  obj:"Hold the fort for 10 turns. Rowan must live, and no enemy may stand on the throne.",
  map:[
-  'MMMMMMMMMMMMMM########',
-  'MMMMMHH.......#RRRRRR#',
-  'MMH..........##RRTRRR#',
-  'MH...h..h....#RRRRRRR#',
-  'H.........h..#RRRRRRR#',
-  '..h..........#RRRRRRR#',
-  '======.=.=====GRRRRRR#',
-  '..h.....h....#RRRRRRR#',
-  'H.........h..#RRRRRRR#',
-  'MH...h.......#RRRRRRR#',
-  'MMH..........##RRRRRR#',
-  'MMMMMHH.......#RRRRRR#',
-  'MMMMMMMMMMMMMM########'
+  'MMMMMMMMMMMMMMMM############',
+  'MMMMMHH.........#R.........#',
+  'MMH......h......#R..h......#',
+  'MH...h..h.......#A....######',
+  'H.........h.....ZR....#RRRR#',
+  '..h.............#R....#RRRR#',
+  '..h.....h.......#R....#RRRR#',
+  '..........h.....GR....GRRTR#',
+  '================GR....GRRRR#',
+  'H.......h.......#R....#RRRR#',
+  '..h.............ZR....######',
+  'MH...h..........#A.........#',
+  'MMH.............#R..h......#',
+  'MMMMHH..........######GG####',
+  'MMMMMMH.........MM........MM',
+  'MMMMMMMMMMMMMMMMMM====....MM'
  ],
- deploy:[[6,15],[6,16],[5,15],[7,15],[5,16],[7,16],[3,16],[9,16]],
+ deploy:[[6,18],[7,18],[8,18],[9,18],[6,19],[7,19],[8,19],[9,19],[5,18],[10,18],[7,20]],
  forced:["rowan"],
  guests:[
-  {cls:'civ',lv:3,name:'Refugee',r:3,c:5,side:'B',tag:'civ'},
-  {cls:'civ',lv:3,name:'Refugee',r:5,c:2,side:'B',tag:'civ'},
-  {cls:'civ',lv:3,name:'Refugee',r:7,c:2,side:'B',tag:'civ'}
+  {cls:'civ',lv:3,name:'Refugee',r:2,c:9,side:'B',tag:'civ'},
+  {cls:'civ',lv:3,name:'Refugee',r:6,c:8,side:'B',tag:'civ'},
+  {cls:'civ',lv:3,name:'Refugee',r:10,c:2,side:'B',tag:'civ'},
+  {cls:'archer',lv:11,name:'Cinderhold Archer',r:5,c:17,side:'G',tag:'garrison',ai:'guard'},
+  {cls:'archer',lv:11,name:'Cinderhold Archer',r:9,c:17,side:'G',tag:'garrison',ai:'guard'},
+  {cls:'guardsman',lv:11,name:'Cinderhold Guard',r:3,c:17,side:'G',tag:'garrison',ai:'guard'},
+  {cls:'guardsman',lv:11,name:'Cinderhold Guard',r:11,c:17,side:'G',tag:'garrison',ai:'guard'}
  ],
  enemies:[
-  ['regentcap',14,6,0,{pal:'R',ai:'stay',boss:1,name:'General Morrow',tag:'morrow',gold:400,plan:'regentgeneral'}],
-  ['blackrider',12,4,1,{pal:'R',ai:'aggr',name:'Captain Sable',tag:'sable'}],
-  ['blackrider',12,3,2,{pal:'R',ai:'aggr'}],
-  ['blackrider',12,5,1,{pal:'R',ai:'aggr'}],
-  ['blackrider',12,8,1,{pal:'R',ai:'aggr'}],
-  ['soldier',12,6,3,{pal:'R',ai:'aggr'}],
-  ['soldier',12,5,4,{pal:'R',ai:'aggr'}],
-  ['soldier',12,7,4,{pal:'R',ai:'aggr'}],
-  ['soldier',12,6,6,{pal:'R',ai:'aggr'}],
-  ['pikeman',12,4,4,{pal:'R',ai:'aggr'}],
-  ['pikeman',12,8,4,{pal:'R',ai:'aggr'}],
-  ['xbowman',12,2,3,{pal:'R',ai:'guard'}],
-  ['xbowman',12,10,3,{pal:'R',ai:'guard'}],
-  ['warpriest',12,3,1,{pal:'R',ai:'guard'}],
-  ['warpriest',12,9,1,{pal:'R',ai:'guard'}]
+  ['regentcap',14,8,1,{pal:'R',ai:'stay',boss:1,name:'General Morrow',tag:'morrow',gold:400,plan:'regentgeneral'}],
+  ['blackrider',12,7,3,{pal:'R',ai:'aggr',name:'Captain Sable',tag:'sable'}],
+  ['blackrider',12,6,4,{pal:'R',ai:'aggr'}],
+  ['blackrider',12,9,4,{pal:'R',ai:'aggr'}],
+  ['blackrider',12,8,6,{pal:'R',ai:'aggr'}],
+  ['soldier',12,7,8,{pal:'R',ai:'aggr'}],
+  ['soldier',12,8,9,{pal:'R',ai:'aggr'}],
+  ['soldier',12,9,10,{pal:'R',ai:'aggr'}],
+  ['soldier',12,6,11,{pal:'R',ai:'aggr'}],
+  ['soldier',12,8,12,{pal:'R',ai:'aggr'}],
+  ['pikeman',12,7,13,{pal:'R',ai:'aggr'}],
+  ['pikeman',12,9,13,{pal:'R',ai:'aggr'}],
+  ['pikeman',12,5,12,{pal:'R',ai:'aggr'}],
+  ['xbowman',12,4,10,{pal:'R',ai:'guard'}],
+  ['xbowman',12,12,8,{pal:'R',ai:'guard'}],
+  ['xbowman',12,2,5,{pal:'R',ai:'guard'}],
+  ['warpriest',12,7,2,{pal:'R',ai:'guard'}],
+  ['warpriest',12,9,2,{pal:'R',ai:'guard'}]
  ],
  chests:[
-  {r:9,c:20,kind:'iron',loot:{item:'seal'}},
-  {r:3,c:6,kind:'wood',loot:{gold:300}}
+  {r:9,c:25,kind:'iron',loot:{item:'seal'}},
+  {r:3,c:8,kind:'wood',loot:{gold:300}}
  ],
  win:{type:'survive',turns:10},
- lose:{tile:[2,17],msg:'The enemy has taken the throne.'},
+ lose:{tile:[7,25],msg:'The enemy has taken the throne.'},
  events:[
   {when:{start:1},scene:[
    {w:'morrow',x:'Lord Regent Voss offers mercy. Hand over the impostor and the sword, and the rest of you may go home.'},
@@ -5903,7 +6262,7 @@ MISSIONS.push({
    {w:'brom',x:'Hold the gate, and keep them off the throne room. Ten turns and they’ll run out of daylight.'}
   ]},
   {when:{turn:3},scene:[
-  ],spawn:[['soldier',12,5,0,{pal:'R',ai:'aggr'}],['soldier',12,7,0,{pal:'R',ai:'aggr'}]]},
+  ],spawn:[['soldier',12,8,0,{pal:'R',ai:'aggr'}],['soldier',12,7,0,{pal:'R',ai:'aggr'}],['pikeman',12,9,0,{pal:'R',ai:'aggr'}]]},
   {when:{turn:5},scene:[
    {w:'morrow',x:'Captain Sable. The refugees in the lower town are sheltering rebels. Ride them down.'},
    {w:'narr',x:'Black riders wheel toward the lower town. At their head, Captain Sable stops her horse.'},
@@ -5919,19 +6278,41 @@ MISSIONS.push({
    {w:'rowan',x:'Not mine. Yours. You’ll fight because you choose to, or not at all.',if:'sableoath'},
    {w:'sable',x:'Then I’ll go. If we meet again, I hope I’m on your side of the field.',if:'sablegone'},
    {w:'kael',x:'Thank you, brother.',if:'sablegone'}
-  ],spawn:[['pikeman',12,5,0,{pal:'R',ai:'aggr'}],['xbowman',12,7,0,{pal:'R',ai:'guard'}]]},
+  ],spawn:[['soldier',12,15,18,{pal:'R',ai:'aggr'}],['soldier',12,15,19,{pal:'R',ai:'aggr'}],['xbowman',12,15,20,{pal:'R',ai:'guard'}]]},
   {when:{turn:8},scene:[
-  ],spawn:[['soldier',12,5,0,{pal:'R',ai:'aggr'}],['soldier',12,7,0,{pal:'R',ai:'aggr'}],['pikeman',12,4,0,{pal:'R',ai:'aggr'}]]},
+  ],spawn:[['soldier',12,8,0,{pal:'R',ai:'aggr'}],['pikeman',12,7,0,{pal:'R',ai:'aggr'}],['soldier',12,15,20,{pal:'R',ai:'aggr'}],['soldier',12,15,21,{pal:'R',ai:'aggr'}]]},
   {when:{dead:'morrow'},scene:[
    {w:'morrow',x:'The Regent... has more armies... than you have friends...'}
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[8,20]},
   {w:'narr',x:'Cinderhold. An old border fort, empty for twenty years. Refugees from the burned villages shelter in the lower town.'},
   {w:'brom',x:'Good walls. Bad roof. One gate, and a fine one. I could live here.'},
+  {pan:[7,24]},
   {w:'narr',x:'In the keep stands a great round table of black oak, scorched at the edges.'},
   {w:'maelis',x:'The Ashen Table. Alder’s grandfather built it, and nobody has sat at it since the Crown broke.'},
-  {w:'narr',x:'A rider on the hill. Then a hundred more. The Regent’s army, and General Morrow at its head.'}
+  {enter:'rowan',from:[7,24],bg:1},
+  {wait:300},
+  {enter:'kael',from:[7,24],bg:1},
+  {wait:300},
+  {enter:'elowen',from:[7,24],bg:1},
+  {wait:300},
+  {enter:'gorm',from:[7,24],bg:1},
+  {wait:300},
+  {enter:'maelis',from:[7,24],bg:1},
+  {wait:300},
+  {enter:'nim',from:[7,24]},
+  {sync:1},
+  {pan:[8,6]},
+  {enter:'morrow',from:[8,-1],bg:1},
+  {wait:400},
+  {enter:'enemies',from:[8,-1],bg:1},
+  {w:'narr',x:'A rider on the hill. Then a hundred more. The Regent’s army, and General Morrow at its head.'},
+  {sync:1}
  ],
  post:[
   {w:'narr',x:'Morrow’s army pulls back into the dusk. The refugees come up from the lower town, carrying lamps.'},
@@ -6001,10 +6382,21 @@ MISSIONS.push({
   ]}
  ],
  pre:[
+
+ ],
+ intro:[
+  {cut:[6,10]},
   {w:'narr',x:'Midnight. The watch on Cinderhold’s walls hears it before anyone sees it: wings, huge and slow.'},
+  {enter:'party',from:[7,8]},
   {w:'lyra',x:'Something’s blotting out the stars. Something big.'},
+  {pan:[2,10]},
+  {enter:'skarn',from:[-2,10],bg:1},
+  {wait:600},
+  {enter:'gryphonrider',from:[-2,10],bg:1},
   {w:'maelis',x:'Skarn. The Black Wyrm. Look at his neck. Bone chains. Someone has him leashed.'},
   {w:'seren',x:'Gale won’t go near it. She’s shaking.'},
+  {sync:1},
+  {pan:[3,3]},
   {w:'brom',x:'The old ballistae on the walls. If they still fire, a bolt in his wing might send him home.'}
  ],
  post:[
