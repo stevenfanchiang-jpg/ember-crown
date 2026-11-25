@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="acbe78fbf2";window.EC_BUILT="Nov 24, 7:53 pm";
+window.EC_VERSION="6d1d14074d";window.EC_BUILT="Nov 24, 8:54 pm";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -2030,23 +2030,13 @@ function tzMapText(g,txt,x,y,size,col,rot,sp){g.save();g.translate(x,y);if(rot)g
  if(sp){const chars=[...txt];const ws=chars.map(c=>g.measureText(c).width);const tot=ws.reduce((a,b)=>a+b,0)+sp*(chars.length-1);let cx=-tot/2;for(let i=0;i<chars.length;i++){const c=chars[i];g.lineWidth=3.2;g.strokeStyle='rgba(248,238,210,.7)';g.strokeText(c,cx+ws[i]/2,0);g.fillStyle=col;g.fillText(c,cx+ws[i]/2,0);cx+=ws[i]+sp;}}
  else{g.lineWidth=3.2;g.strokeStyle='rgba(248,238,210,.7)';g.lineJoin='round';g.strokeText(txt,0,0);g.fillStyle=col;g.fillText(txt,0,0);}
  g.restore();}
-/* R-093 fog of war on the act map (owner 2026-11-24). Only what the company has reached is clear: finished missions, the missions
-   open now, the home keep and the camp. Everything else lies under cloud: future main missions, and optional missions until
-   the story choice that unlocks them. Roads are drawn only between places that are clear. */
+/* R-093 act map reveal (owner 2026-11-24; first tried as cloud fog, which he didn't like): the whole painted map shows, but only
+   finished missions and missions open now have a flag, label and road. Future main missions, and optional missions until the
+   story choice that unlocks them, stay hidden until they become available. */
 function worldSeen(id){if(!CAMP||!CAMP.done)return true;if(!MISSIONS.some(m=>m.id===id))return true;   // towns, the camp
  return !!CAMP.done[id]||openMissions().some(m=>m.id===id);}
 function segShown(s){return worldSeen(s.to)&&worldSeen(s.from);}
 function worldFogKey(){const WD=curWorld();return Object.keys(WD.nodes).filter(worldSeen).join(',');}
-function bakeWorldFog(k,WD){const W=WD.w,H=WD.h,cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(W*k));cv.height=Math.max(1,Math.round(H*k));const g=cv.getContext('2d');g.scale(k,k);
- const R=rng(hash('fog'+(WD.act||1)));g.fillStyle='rgba(214,219,224,.92)';g.fillRect(0,0,W,H);
- for(let i=0;i<150;i++){const x=R()*W,y=R()*H,r=60+R()*110,lt=R()<.6;const gr=g.createRadialGradient(x,y,0,x,y,r);
-  gr.addColorStop(0,lt?'rgba(248,249,250,.22)':'rgba(150,160,172,.16)');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2);}
- g.globalCompositeOperation='destination-out';
- const hole=(x,y,r)=>{const gr=g.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,'rgba(0,0,0,1)');gr.addColorStop(.55,'rgba(0,0,0,.95)');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2);};
- for(const id in WD.nodes)if(worldSeen(id))hole(WD.nodes[id].x,WD.nodes[id].y-10,95);
- if(WD.camp)hole(WD.camp.x,WD.camp.y,80);
- for(const s of WD.segs)if(segShown(s))for(let i=0;i<=20;i++){const p=tzBez(s.c,i/20);hole(p.x,p.y,62);}
- g.globalCompositeOperation='source-over';return cv;}
 function bakeWorld1(k){
  {const WD=curWorld();if(WD!==WORLD1)return bakeWorldPlain(k,WD);}
  const W=WORLD1.w,H=WORLD1.h,cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(W*k));cv.height=Math.max(1,Math.round(H*k));const g=cv.getContext('2d');g.scale(k,k);const R=rng(hash('world1'));
@@ -3804,10 +3794,10 @@ $('#winfo').addEventListener('click',e=>{const b=e.target.closest('[data-ws]');i
 function worldLayout(){const w=wcv.clientWidth,h=wcv.clientHeight,d=Math.min(window.devicePixelRatio||1,2);if(wcv.width!==Math.round(w*d)||wcv.height!==Math.round(h*d)){wcv.width=Math.round(w*d);wcv.height=Math.round(h*d);}
  const W1=curWorld(),wide=w>=880||w>h,wi=$('#winfo'),pl=wide&&wi&&wi.offsetWidth?wi.offsetLeft-wcv.offsetLeft-12-16:0,aw=wide?(pl>200?pl:w-(w>=880&&h>560?430:330)):w-24,top=h>560?66:50,ah=wide?h-top-16:h-top-262;const short=wide&&h<=560;let s=short?Math.min(1,aw/W1.w,(ah*1.9)/W1.h):Math.max(.3,Math.min(aw/W1.w,ah/W1.h));const ox=(aw-W1.w*s)/2+(wide?16:12);let oy=top;
  if(short&&W1.h*s>ah){const n=(SCENE.sel&&curWorld().nodes[SCENE.sel])||curWorld().nodes.m1||{y:W1.h/2};if(SCENE.wpan==null)SCENE.wpan=0;const base=top+ah/2-n.y*s;const lo=h-6-W1.h*s,hi=top;SCENE.wpan=clamp(base+SCENE.wpan,lo,hi)-base;oy=base+SCENE.wpan;SCENE.wclip=[top,h];}else SCENE.wclip=null;
- const k=Math.min(3,s*d);const fk=worldFogKey();if(!SCENE.wbase||Math.abs(SCENE.wk-k)>.01||SCENE.wid!==curWorld()||SCENE.wfk!==fk){SCENE.wbase=bakeWorld1(k);SCENE.wfog=bakeWorldFog(k,curWorld());SCENE.wk=k;SCENE.wid=curWorld();SCENE.wfk=fk;}return {w,h,d,s,ox,oy};}
+ const k=Math.min(3,s*d);const fk=worldFogKey();if(!SCENE.wbase||Math.abs(SCENE.wk-k)>.01||SCENE.wid!==curWorld()||SCENE.wfk!==fk){SCENE.wbase=bakeWorld1(k);SCENE.wk=k;SCENE.wid=curWorld();SCENE.wfk=fk;}return {w,h,d,s,ox,oy};}
 function nodeOf(id){return curWorld().nodes[id];}
 function drawWorld(now){
- const L=worldLayout(),W1=curWorld();wg.setTransform(L.d,0,0,L.d,0,0);wg.fillStyle='#0b120f';wg.fillRect(0,0,L.w,L.h);wg.save();if(SCENE.wclip){wg.beginPath();wg.rect(0,SCENE.wclip[0]-4,L.w,L.h);wg.clip();}wg.drawImage(SCENE.wbase,L.ox,L.oy,W1.w*L.s,W1.h*L.s);if(SCENE.wfog)wg.drawImage(SCENE.wfog,L.ox,L.oy,W1.w*L.s,W1.h*L.s);   // R-093
+ const L=worldLayout(),W1=curWorld();wg.setTransform(L.d,0,0,L.d,0,0);wg.fillStyle='#0b120f';wg.fillRect(0,0,L.w,L.h);wg.save();if(SCENE.wclip){wg.beginPath();wg.rect(0,SCENE.wclip[0]-4,L.w,L.h);wg.clip();}wg.drawImage(SCENE.wbase,L.ox,L.oy,W1.w*L.s,W1.h*L.s);
  wg.setTransform(L.d*L.s,0,0,L.d*L.s,L.d*L.ox,L.d*L.oy);
  const opts=openMissions().map(m=>m.id);
  for(const m of MISSIONS){const n=nodeOf(m.id);if(!n)continue;const st=CAMP.done[m.id]?'won':opts.includes(m.id)?'open':'locked';if(!worldSeen(m.id))continue;   // R-093 under the fog
