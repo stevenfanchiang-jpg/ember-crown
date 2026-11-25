@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <script>
-window.EC_VERSION="516662fb5f";window.EC_BUILT="Nov 22, 3:49 pm";
+window.EC_VERSION="acbe78fbf2";window.EC_BUILT="Nov 24, 7:53 pm";
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 (function(){var shown=false;function check(){if(shown||!navigator.onLine)return;
 fetch("version.txt?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(v){v=(v||"").trim();
@@ -162,6 +162,7 @@ button:focus-visible{outline:2px solid var(--gold-2);outline-offset:2px}
 .li:hover:not(:disabled){background:rgba(220,178,90,.08);border-color:#6d5a2c}
 .li:disabled{opacity:.45;cursor:default}
 .li.on{border-color:var(--gold);background:rgba(220,178,90,.12)}
+.gslots{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}.gslot{font-size:12px;padding:5px 9px;min-height:0}.gslot b{color:var(--gold-2);margin-right:4px}
 .li canvas{width:48px;height:48px;border-radius:8px;grid-row:span 2;background:#101814}
 .li .nm{font-weight:800;font-size:15px}
 .li .ds{font-size:12.5px;color:var(--muted);grid-column:2}
@@ -503,7 +504,8 @@ const RULES={
  chapelPerLv:50,      // R-061 gold per level to heal a gravely wounded unit
  zoc:true,            // R-015 zone of control on/off
  crackWall:20,        // R-073 HP of a cracked wall (Z) before it falls into rubble
- night:{sight:3,light:3},  // R-075 night missions: tiles each side sees round its units; tiles a campfire or lit torch lights
+ night:{sight:3,light:3},
+ fog:{sight:4,far:6},  // R-093 fog of war (owner 2026-11-24: optional story-choice missions): tiles each unit sees; scouts (Keen Eyes), flyers and torch bearers see `far`  // R-075 night missions: tiles each side sees round its units; tiles a campfire or lit torch lights
  ballista:{mt:8,rng:[2,6],flyer:3},   // R-088 ballista: might added to ATK, range, damage ×3 against flyers
  tide:{dmg:5},           // R-087 damage to a unit caught on sand when the tide floods it
  sapper:{dmg:5},         // R-085 a falling sapper's blast on each of the 4 tiles next to it
@@ -742,7 +744,7 @@ const HERO={
   bio:'The last Greywarden, three centuries old. She jokes instead of answering. She has waited eighteen years for Rowan and has not told him why.'},
  nim:{n:'Nim',full:'Nim',cls:'scout',lv:5,s:[18,5,3,1,3,12],gb:[0,5,0,0,0,10],eq:['kris','leather',null],sk:['pilfer'],look:{hair:'#c4542a'},side:'B',
   bio:'A Brackenford street orphan and the best pickpocket on the river. Joins nothing, owes no one, stays “nearby.”'},
- edric:{n:'Sir Edric',full:'Sir Edric of Fallowmere',cls:'squire',lv:9,s:[30,10,9,0,4,5],gb:[0,0,0,0,0,0],eq:['steelsword','chain','edricring'],sk:[],look:{hair:'#b8b2a8',beard:1,cape:1},side:'G',guest:1,
+ edric:{n:'Sir Edric',full:'Sir Edric of Fallowmere',cls:'squire',lv:9,s:[32,12,9,0,4,5],gb:[0,0,0,0,0,0],eq:['steelsword','chain','edricring'],sk:['riposte','command'],look:{hair:'#b8b2a8',beard:1,cape:1},side:'G',guest:1,
   bio:'Lord of Fallowmere Keep. Old, scarred, and keeping a promise he has never explained.'}
 };
 const WDEF={goblin:'knife',goblinthief:'knife',goblinarcher:'shortbow',ogre:'logclub',bandit:'ironsword',banditarcher:'shortbow',pikeman:'ironlance',soldier:'ironsword',xbowman:'lightxbow',blackrider:'ironlance',warpriest:'healstaff',skeleton:'rustysword',skelarcher:'shortbow',ghoul:'fang',wraith:'shade',wolf:'fang',frosttroll:'icicle',shinobi:'kris',regentcap:'steelsword',
@@ -1123,7 +1125,8 @@ const TER={
  Q:{n:'Tide Sand',c:1,d:0,tip:'Wet sand. The tide will cover it.'},
  q:{n:'Flooded Sand',c:99,d:0,block:1,water:1,tip:'The tide is in: deep water. Only swimmers and flyers cross.'},   // R-087 Tide Sand after the tide reaches it
  j:{n:'Campfire',c:99,d:0,block:1,low:1,tip:'Impassable. Lights the dark around it.'},
- A:{n:'Ballista',c:1,d:1,fort:1,tip:'+1 defense. A great crossbow on the wall.'}
+ A:{n:'Ballista',c:1,d:1,fort:1,tip:'+1 defense. A great crossbow on the wall.'},
+ '^':{n:'Siege Ladder',c:2,d:1,cav:99,tip:'A ladder up the wall: costs 2 move, +1 defense. Either side can climb it. Cavalry can\'t.'}   // R-092 (m5): placed by a mission event
 };
 function tcost(mt,ch){const T=TER[ch];if(!T)return 99;if(mt==='fly')return 1;if(mt==='swim'&&T.water)return 2;   // R-086 swimmers cross deep water
 if(T.block)return 99;if(mt==='cav'&&T.cav)return T.cav;if(mt==='heavy'&&T.heavy)return T.heavy;return T.c;}
@@ -1139,6 +1142,11 @@ function drawRail(t,x,y,up,dn,lf,rt){if(!(up||dn||lf||rt))lf=rt=true;const cx=x+
  if(up||dn){const y0=up?y:cy-8,y1=dn?y+TS:cy+8;for(const o of [-7,7]){t.moveTo(cx+o,y0);t.lineTo(cx+o,y1);}}
  t.stroke();}
 let terr=null,DECOR=[],WATER=[];
+// R-092 siege ladder over the painting: two rails and rungs, warm wood with a dark edge
+function drawLadder(t,x,y){t.save();t.fillStyle='rgba(0,0,0,.28)';t.fillRect(x+12,y+2,26,46);
+ t.strokeStyle='#3a2616';t.lineWidth=5;t.beginPath();t.moveTo(x+15,y);t.lineTo(x+15,y+TS);t.moveTo(x+33,y);t.lineTo(x+33,y+TS);t.stroke();
+ t.strokeStyle='#9a6a3c';t.lineWidth=3;t.beginPath();t.moveTo(x+15,y);t.lineTo(x+15,y+TS);t.moveTo(x+33,y);t.lineTo(x+33,y+TS);
+ for(let k=6;k<TS;k+=9){t.moveTo(x+15,y+k);t.lineTo(x+33,y+k);}t.stroke();t.restore();}
 function bakeTerrain(){
  const SC=2,rows=G.rows,cols=G.cols,R=rng(hash(G.mid+((G.m&&G.m.map)||G.map).join('')));
  terr=document.createElement('canvas');terr.width=cols*TS*SC;terr.height=rows*TS*SC;
@@ -1151,6 +1159,7 @@ function bakeTerrain(){
  if(PM){t.drawImage(MAPIMG[G.mid],0,0,cols*TS,rows*TS);DECOR=[];WATER=[];
   for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const ch=T(r,c),x=c*TS,y=r*TS;
    if(ch==='u'&&WAS(r,c)==='Z')drawRubble(t,x,y,r,c);
+   if(ch==='^')drawLadder(t,x,y);
    if(ch==='E'&&T(r,c-1)!=='E'&&T(r-1,c)!=='E')DECOR.push({y:y+40,x0:x,x1:x+TS,y0:y-10,y1:y+TS,draw:(g,tm)=>drawExit(g,x,y,tm)});}
   return;}
  const wet=ch=>ch==='W'||ch==='S'||ch==='B'||ch==='q';
@@ -1323,7 +1332,13 @@ function drawChest(g,ch,tm){const x=ch.c*TS+24,y=ch.r*TS+30;
  g.fillStyle=iron?'#3a3f48':GOLD;g.fillRect(x-10,y-10,20,2);g.fillRect(x-1.5,y-12,3,5);
  if(!RM){const s=(Math.sin(tm/400+ch.c)+1)/2;g.fillStyle=`rgba(255,240,180,${.25+s*.4})`;g.beginPath();g.arc(x+7,y-15,1.3,0,7);g.fill();}
 }
-function drawCat(g,cat,tm){const x=cat.c*TS+28,y=cat.r*TS+34;g.fillStyle='rgba(0,0,0,.25)';ell(g,x,y+1,10,3);g.fill();
+// painted cat (owner 2026-11-24): art/maps/obj/cat_sleep.png, a curled sleeping cat cut out with alpha, drawn about a tile wide,
+// feet on the lower part of its tile, breathing gently. Falls back to the code-drawn cat until the painting is packed.
+function drawCatImg(g,cat,tm){const I=typeof OBJIMG!=='undefined'&&OBJIMG.cat_sleep;if(!I||!imgOK(I))return false;
+ const w=TS*1.05,h=w*I.height/I.width,x=cat.c*TS+TS/2,y=cat.r*TS+TS*.86,b=RM?1:1+Math.sin(tm/700)*.018;
+ g.save();g.translate(x,y);g.scale(1,b);g.drawImage(I,-w/2,-h,w,h);g.restore();
+ if(!RM&&Math.sin(tm/900)>.7){g.fillStyle='rgba(255,255,255,.85)';g.font='bold 10px sans-serif';g.fillText('z',x+w*.38,y-h-((tm/80)%6));}return true;}
+function drawCat(g,cat,tm){if(drawCatImg(g,cat,tm))return;const x=cat.c*TS+28,y=cat.r*TS+34;g.fillStyle='rgba(0,0,0,.25)';ell(g,x,y+1,10,3);g.fill();
  const b=RM?0:Math.sin(tm/600)*.6;g.beginPath();g.ellipse(x,y-5+b,9,6,0,0,7);sh(g,'#e7a24a',1.1);g.strokeStyle='#b8762a';g.lineWidth=1.2;for(const d of [-4,0,4])line(g,x+d,y-10+b,x+d+1,y-3+b);
  g.beginPath();g.arc(x+7,y-9+b,4.4,0,7);sh(g,'#e7a24a',1);g.beginPath();g.moveTo(x+4,y-12+b);g.lineTo(x+5,y-16+b);g.lineTo(x+7,y-13+b);g.closePath();sh(g,'#e7a24a',.8);g.beginPath();g.moveTo(x+8,y-13+b);g.lineTo(x+10,y-16.5+b);g.lineTo(x+11,y-12+b);g.closePath();sh(g,'#e7a24a',.8);
  g.strokeStyle='#2a1d17';g.lineWidth=.9;line(g,x+6,y-9+b,x+7.5,y-9+b);line(g,x+9,y-9+b,x+10.5,y-9+b);
@@ -2006,7 +2021,7 @@ function curWorld(){const nm=typeof nextMain==='function'?nextMain():null;const 
 function bakeWorldPlain(k,WD){const W=WD.w,H=WD.h,cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(W*k));cv.height=Math.max(1,Math.round(H*k));const g=cv.getContext('2d');g.scale(k,k);
  const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#e9dcb8');gr.addColorStop(1,'#d8c79c');g.fillStyle=gr;g.fillRect(0,0,W,H);
  g.lineCap='round';g.lineJoin='round';
- for(const s of WD.segs){const c=s.c;g.beginPath();g.moveTo(c[0].x,c[0].y);g.bezierCurveTo(c[1].x,c[1].y,c[2].x,c[2].y,c[3].x,c[3].y);g.strokeStyle='#7a5a36';g.lineWidth=2.4;g.setLineDash(s.to==='m15b'?[2,4]:[6,4]);g.stroke();g.setLineDash([]);}
+ for(const s of WD.segs){if(!segShown(s))continue;const c=s.c;g.beginPath();g.moveTo(c[0].x,c[0].y);g.bezierCurveTo(c[1].x,c[1].y,c[2].x,c[2].y,c[3].x,c[3].y);g.strokeStyle='#7a5a36';g.lineWidth=2.4;g.setLineDash(s.to==='m15b'?[2,4]:[6,4]);g.stroke();g.setLineDash([]);}
  tzMapText(g,'Act II — The Sword (map to be painted)',W/2,H-24,16,'#5a4024');return cv;}
 
 function tzBez(c,u){const v=1-u;return {x:v*v*v*c[0].x+3*v*v*u*c[1].x+3*v*u*u*c[2].x+u*u*u*c[3].x,y:v*v*v*c[0].y+3*v*v*u*c[1].y+3*v*u*u*c[2].y+u*u*u*c[3].y};}
@@ -2015,6 +2030,23 @@ function tzMapText(g,txt,x,y,size,col,rot,sp){g.save();g.translate(x,y);if(rot)g
  if(sp){const chars=[...txt];const ws=chars.map(c=>g.measureText(c).width);const tot=ws.reduce((a,b)=>a+b,0)+sp*(chars.length-1);let cx=-tot/2;for(let i=0;i<chars.length;i++){const c=chars[i];g.lineWidth=3.2;g.strokeStyle='rgba(248,238,210,.7)';g.strokeText(c,cx+ws[i]/2,0);g.fillStyle=col;g.fillText(c,cx+ws[i]/2,0);cx+=ws[i]+sp;}}
  else{g.lineWidth=3.2;g.strokeStyle='rgba(248,238,210,.7)';g.lineJoin='round';g.strokeText(txt,0,0);g.fillStyle=col;g.fillText(txt,0,0);}
  g.restore();}
+/* R-093 fog of war on the act map (owner 2026-11-24). Only what the company has reached is clear: finished missions, the missions
+   open now, the home keep and the camp. Everything else lies under cloud: future main missions, and optional missions until
+   the story choice that unlocks them. Roads are drawn only between places that are clear. */
+function worldSeen(id){if(!CAMP||!CAMP.done)return true;if(!MISSIONS.some(m=>m.id===id))return true;   // towns, the camp
+ return !!CAMP.done[id]||openMissions().some(m=>m.id===id);}
+function segShown(s){return worldSeen(s.to)&&worldSeen(s.from);}
+function worldFogKey(){const WD=curWorld();return Object.keys(WD.nodes).filter(worldSeen).join(',');}
+function bakeWorldFog(k,WD){const W=WD.w,H=WD.h,cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(W*k));cv.height=Math.max(1,Math.round(H*k));const g=cv.getContext('2d');g.scale(k,k);
+ const R=rng(hash('fog'+(WD.act||1)));g.fillStyle='rgba(214,219,224,.92)';g.fillRect(0,0,W,H);
+ for(let i=0;i<150;i++){const x=R()*W,y=R()*H,r=60+R()*110,lt=R()<.6;const gr=g.createRadialGradient(x,y,0,x,y,r);
+  gr.addColorStop(0,lt?'rgba(248,249,250,.22)':'rgba(150,160,172,.16)');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2);}
+ g.globalCompositeOperation='destination-out';
+ const hole=(x,y,r)=>{const gr=g.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,'rgba(0,0,0,1)');gr.addColorStop(.55,'rgba(0,0,0,.95)');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2);};
+ for(const id in WD.nodes)if(worldSeen(id))hole(WD.nodes[id].x,WD.nodes[id].y-10,95);
+ if(WD.camp)hole(WD.camp.x,WD.camp.y,80);
+ for(const s of WD.segs)if(segShown(s))for(let i=0;i<=20;i++){const p=tzBez(s.c,i/20);hole(p.x,p.y,62);}
+ g.globalCompositeOperation='source-over';return cv;}
 function bakeWorld1(k){
  {const WD=curWorld();if(WD!==WORLD1)return bakeWorldPlain(k,WD);}
  const W=WORLD1.w,H=WORLD1.h,cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(W*k));cv.height=Math.max(1,Math.round(H*k));const g=cv.getContext('2d');g.scale(k,k);const R=rng(hash('world1'));
@@ -2022,7 +2054,7 @@ function bakeWorld1(k){
  // painted world map (2026-11-17): the painting is the whole land; only the mission road is drawn over it
  if(typeof WORLDIMG!=='undefined'&&imgOK(WORLDIMG.act1)){g.imageSmoothingQuality='high';g.drawImage(WORLDIMG.act1,0,0,W,H);
   g.lineCap='round';g.lineJoin='round';
-  for(const s of WORLD1.segs){const c=s.c;g.beginPath();g.moveTo(c[0].x,c[0].y);g.bezierCurveTo(c[1].x,c[1].y,c[2].x,c[2].y,c[3].x,c[3].y);
+  for(const s of WORLD1.segs){if(!segShown(s))continue;const c=s.c;g.beginPath();g.moveTo(c[0].x,c[0].y);g.bezierCurveTo(c[1].x,c[1].y,c[2].x,c[2].y,c[3].x,c[3].y);
    g.strokeStyle='rgba(40,26,12,.45)';g.lineWidth=4.6;g.stroke();g.strokeStyle='rgba(255,236,190,.95)';g.lineWidth=2.2;g.setLineDash(s.to==='m4b'?[2,4]:[7,5]);g.stroke();g.setLineDash([]);}
   return cv;}
  // road samples (to keep decor off the roads)
@@ -2187,14 +2219,18 @@ function rangeOf(u,r,c,moved){
 // Campfires (j) and lit torches light RULES.night.light tiles for everyone, and light shows hidden units too.
 let LITC={map:null,fires:[]};
 function isNight(){return !!(G&&G.m&&G.m.night);}
+// battle fog: like night, but no light sources and longer sight. Off unless a mission sets fog:true (owner 2026-11-24: no fog in battles for now;
+// the fog of war he wanted is on the world map, R-093).
+function isFog(){return !!(G&&G.m&&!G.m.night&&G.m.fog===true);}
+function sightOf(e){if(isNight())return RULES.night.sight;return (has(e,'reveal')||isFlyer(e)||e.buffs.torch)?RULES.fog.far:RULES.fog.sight;}
 function lightSources(){if(LITC.map!==G.map){const f=[];for(let r=0;r<G.rows;r++)for(let c=0;c<G.cols;c++)if(G.map[r][c]==='j')f.push([r,c]);LITC={map:G.map,fires:f};}
  const out=LITC.fires.slice();for(const e of live())if(e.buffs.torch&&!e.carried)out.push([e.r,e.c]);return out;}
-function isLit(r,c){if(!isNight())return true;for(const [lr,lc] of lightSources())if(dist(r,c,lr,lc)<=RULES.night.light)return true;return false;}
-function inSight(r,c,side){for(const e of live())if(friendly(e.side,side)&&!e.carried&&dist(e.r,e.c,r,c)<=RULES.night.sight)return true;return false;}
-function tileSeen(r,c,side){return !isNight()||isLit(r,c)||inSight(r,c,side);}
+function isLit(r,c){if(!isNight())return !isFog();for(const [lr,lc] of lightSources())if(dist(r,c,lr,lc)<=RULES.night.light)return true;return false;}
+function inSight(r,c,side){for(const e of live())if(friendly(e.side,side)&&!e.carried&&dist(e.r,e.c,r,c)<=sightOf(e))return true;return false;}
+function tileSeen(r,c,side){return !(isNight()||isFog())||isLit(r,c)||inSight(r,c,side);}
 function visibleTo(u,side){
  if(friendly(u.side,side))return true;
- if(isNight()){const lit=isLit(u.r,u.c);if(!lit&&!inSight(u.r,u.c,side))return false;if(lit)return true;}
+ if(isNight()||isFog()){const lit=isLit(u.r,u.c);if(!lit&&!inSight(u.r,u.c,side))return false;if(lit)return true;}
  if(!u.hidden)return true;
  for(const e of live())if(friendly(e.side,side)&&!e.carried){const d=dist(e.r,e.c,u.r,u.c);if(d<=1)return true;if((has(e,'reveal')||e.buffs.torch)&&d<=3)return true;}
  return false;
@@ -2703,6 +2739,7 @@ async function runEvents(trig){
   if(ev.focus)await focus(ev.focus.c*TS+24,ev.focus.r*TS+24,true);
   if(ev.scene)await playSceneP(ev.scene);
   if(ev.set)CAMP.flags[ev.set]=1;
+  if(ev.tiles){if(G.m&&G.map===G.m.map)G.map=G.map.slice();for(const [r,c,ch] of ev.tiles)if(inMap(r,c))G.map[r]=G.map[r].slice(0,c)+ch+G.map[r].slice(c+1);if(typeof bakeTerrain==='function'&&typeof document!=='undefined')try{bakeTerrain();}catch(e){}}   // R-092 an event changes tiles (m5 siege ladders)
   if(ev.guests)for(const gst of ev.guests)spawnGuest(gst);
   if(ev.spawn){for(const s of ev.spawn){const [cls,lv,r,c,o]=s;const t=unitAt(r,c)?freeNear(r,c):[r,c];if(!t)continue;const u=mkUnit(Object.assign({cls,lv,side:'R',r:t[0],c:t[1]},o||{}));G.units.push(u);u.flash=1;parts(u.x,u.y-20,12,['#ffffff','#cfc6b0'],{spd:60,life:500});}
    const s0=ev.spawn[0];await focus(s0[3]*TS+24,s0[2]*TS+24,true);sfx('horn');await wait(450);}
@@ -2972,7 +3009,7 @@ function draw(now){
  items.sort((a,b)=>a.y-b.y);
  for(const it of items){if(it.u){const fd=it.u.fade!=null&&it.u.fade<1;if(fd){g.save();g.globalAlpha=Math.max(0,it.u.fade);}drawUnit(g,it.u,now,{sel:G.sel===it.u.id,buff:it.u.buffs&&it.u.buffs.atk>0});if(fd)g.restore();}else it.draw(g,now);}
  if(typeof IN!=='undefined'&&IN&&IN.spk&&!IN.spk.off){const u=IN.spk,y=u.y-60+Math.sin(now/180)*2.5;g.strokeStyle='rgba(255,211,107,'+(.55+.3*Math.sin(now/200)).toFixed(2)+')';g.lineWidth=2.5;ell(g,u.x,u.y-2,17,6.5);g.stroke();g.fillStyle='#ffd36b';g.strokeStyle='#14100c';g.lineWidth=2;g.beginPath();g.moveTo(u.x-7,y-8);g.lineTo(u.x+7,y-8);g.lineTo(u.x,y);g.closePath();g.stroke();g.fill();}   // mission intro: who is speaking
- if(isNight())drawNight(g);   // R-075: dark where Blue can't see, a blue tint where it sees by its own eyes, clear in firelight
+ if(isNight())drawNight(g);else if(isFog())drawFog(g);   // R-093   // R-075: dark where Blue can't see, a blue tint where it sees by its own eyes, clear in firelight
  if(!(typeof IN!=='undefined'&&IN))for(const u of G.units)if(!u.dead&&!u.carried&&!u.gone&&!u.off&&seenByPlayer(u))drawBars(g,u);
  for(const f of FX){
   if(f.k==='p'){g.globalAlpha=Math.max(0,1-f.age/f.life);g.fillStyle=f.c;g.beginPath();g.arc(f.x,f.y,f.s,0,7);g.fill();g.globalAlpha=1;}
@@ -2990,6 +3027,9 @@ function draw(now){
 }
 function drawNight(g){for(let r=0;r<G.rows;r++)for(let c=0;c<G.cols;c++){const lit=isLit(r,c);if(lit)continue;
  g.fillStyle=inSight(r,c,'B')?'rgba(10,16,48,.28)':'rgba(4,6,18,.66)';g.fillRect(c*TS,r?r*TS:-44,TS,r?TS:TS+44);}}
+// R-093 fog of war: a pale mist over tiles none of Blue's units can see; the ground stays readable, enemies in it are hidden
+function drawFog(g){for(let r=0;r<G.rows;r++)for(let c=0;c<G.cols;c++){if(inSight(r,c,'B'))continue;
+ g.fillStyle='rgba(206,212,218,.58)';g.fillRect(c*TS,r?r*TS:-44,TS,r?TS:TS+44);}}
 function drawHighlights(now){
  const C=ctx();
  if(!C.sel&&G.inspect&&G.inspect.unit){const u=byId(G.inspect.unit);if(u&&!u.dead&&seenByPlayer(u)){const R=reachOf(u),th=threatOf(u);for(const k of th)if(!R.ends.has(k)){const [r,c]=k.split(',').map(Number);fillT(r,c,'rgba(225,70,55,.24)','rgba(255,123,102,.45)');}for(const k of R.ends){const [r,c]=k.split(',').map(Number);fillT(r,c,'rgba(225,235,255,.22)','rgba(235,242,255,.55)');}}}
@@ -3659,7 +3699,7 @@ function openArmy(back,selUid){
   show(`<div class="av">
    <div class="avtop"><button class="b avnav" id="avPrev" aria-label="Previous">◀</button><canvas class="avface" width="160" height="160" id="armyPor"></canvas>
     <div class="avid"><div class="un">${esc(r.hero?HERO[r.hero].full:r.name)} <span class="lv">Lv ${r.lv}</span></div><div class="us">${esc(c.n)} · XP ${r.xp}/100${r.wounded?' · <span class="avw">Wounded</span>':''}${canPromote(r).length?' · <span class="avp">Ready to promote</span>':''}</div><div class="avpos">${idx+1} / ${L.length}</div></div>
-    <button class="b avnav" id="avNext" aria-label="Next">▶</button><span class="sp"></span><button class="b" id="avList">All units</button><button class="b gold" id="arDone">Done</button></div>
+    <button class="b avnav" id="avNext" aria-label="Next">▶</button><span class="sp"></span>${!r.hero?'<button class="b" id="avDis">Dismiss</button>':''}<button class="b" id="avList">All units</button><button class="b gold" id="arDone">Done</button></div>
    <div class="avbody">
     <div class="avc"><h3>Stats</h3><div class="gains">${statCells(r)}</div><p class="avtiny">Growth: ${STATS.map((k,i)=>`${STATN[k]} ${g[i]}%`).join(' · ')}</p><p class="avtiny">Bracketed numbers come from gear; red is a penalty.</p>${r.hero?`<p class="avbio">${esc(HERO[r.hero].bio)}</p>`:''}</div>
     <div class="avc"><h3>Skills</h3><div class="avskills">${sk.map(k=>`<div><b class="${SK[k].kind==='active'?'act':''}">${esc(SK[k].n)}</b> ${esc(SK[k].d)}</div>`).join('')||'<span class="muted">None</span>'}</div></div>
@@ -3667,28 +3707,73 @@ function openArmy(back,selUid){
    </div></div>`,true);
   scr.classList.add('armyfull');portrait($('#armyPor'),u);itemIcons(scr);
   const step=d=>{sel=L[(idx+d+L.length)%L.length].uid;sfx('tick');view();};
-  $('#avPrev').onclick=()=>step(-1);$('#avNext').onclick=()=>step(1);$('#avList').onclick=()=>{sfx('tick');list();};$('#arDone').onclick=done;
+  $('#avPrev').onclick=()=>step(-1);$('#avNext').onclick=()=>step(1);$('#avList').onclick=()=>{sfx('tick');list();};if($('#avDis'))$('#avDis').onclick=()=>{sfx('tick');scr.classList.remove('armyfull');dismissSellsword(r,()=>{units().length?list():done();},view);};$('#arDone').onclick=done;
   scr.onkeydown=null;
-  for(const s of scr.querySelectorAll('button[data-slot]'))s.onclick=()=>{const k=s.dataset.slot,type={w:'weapon',a:'armor',x:'acc'}[k],cur=r.eq[k];const opts=Object.keys(BAG.items).filter(i=>IT[i].type===type&&(type!=='weapon'||c.wt.includes(IT[i].wt)));sfx('tick');pickItem({w:'Weapon',a:'Armor',x:'Accessory'}[k]+' for '+nm(r),cur,[...(cur?[{v:'__off',n:'Unequip',d:'Put '+IT[cur].n+' back in the convoy',h:gearCmp(r,null,k)}]:[]),...opts.map(i=>({v:i,n:IT[i].n,d:itemDesc(i),q:BAG.items[i],h:gearCmp(r,i,k)}))],v=>{if(!v)return view();if(r.eq[k])BAG.add(r.eq[k]);if(v==='__off')r.eq[k]=null;else{BAG.take(v);r.eq[k]=v;}sfx('select');view();});};};
+  for(const s of scr.querySelectorAll('button[data-slot]'))s.onclick=()=>equipSlot(r,s.dataset.slot,view);};
  if(sel)view();else list();
 }
 /* ---------- training yard ---------- */
+// owner 2026-11-24: tapping a path opens its details first (stats, growth, skills, weapons); the player confirms the promotion there
+function promoDetail(r,p,back){const c=CLS[p.to],old=CLS[r.cls],nm=recName(r);const pb=c.pb||[0,0,0,0,0,0],gNew=STATS.map((k,i)=>c.g[i]+(r.gb?r.gb[i]:0)),gOld=growth(r);
+ const oldSk=new Set([...(old.sk||[]),...r.sk]),sk=[...new Set([...(c.sk||[]),...r.sk])].filter(k=>SK[k]);const ok=!p.item||BAG.has(p.item);
+ const wpn=r.eq.w&&!c.wt.includes(IT[r.eq.w].wt);const rg=c.rng||[1,1];
+ const d=(a,b)=>b>a?`<small class="gup">▲${b-a}</small>`:b<a?`<small class="gdn">▼${a-b}</small>`:'';
+ show(`<div class="eyebrow">Promotion · ${esc(nm)}</div><div class="avtop" style="gap:12px"><canvas class="avface" width="160" height="160" id="pdPor"></canvas>
+   <div class="avid"><div class="un">${esc(c.n)}</div><div class="us">${esc(old.n)} Lv ${r.lv} → ${esc(c.n)}</div><div class="us">${esc(FAMN[c.fam]||c.fam)} · Move ${c.mv}${c.mv!==old.mv?` (now ${old.mv})`:''} · ${c.mt==='cav'?'Mounted':c.mt==='fly'?'Flying':c.mt==='heavy'?'Heavy':'On foot'} · Range ${rg[0]===rg[1]?rg[0]:rg[0]+'–'+rg[1]}</div></div></div>
+  <div class="avbody">
+   <div class="avc"><h3>Stats after promotion</h3><div class="gains">${STATS.map((k,i)=>`<div><span>${STATN[k]}</span><b>${r.s[k]+pb[i]}${pb[i]?`<small class="gup">+${pb[i]}</small>`:''}</b></div>`).join('')}</div>
+    <h3>Growth per level</h3><div class="gains">${STATS.map((k,i)=>`<div><span>${STATN[k]}</span><b>${gNew[i]}%${d(gOld[i],gNew[i])}</b></div>`).join('')}</div></div>
+   <div class="avc"><h3>Skills</h3><div class="avskills">${sk.map(k=>`<div><b class="${SK[k].kind==='active'?'act':''}">${esc(SK[k].n)}</b>${oldSk.has(k)?'':' <small class="gup">NEW</small>'} ${esc(SK[k].d)}</div>`).join('')||'<span class="muted">None</span>'}</div>
+    <h3>Weapons</h3><p>${c.wt.map(w=>esc(WTN[w]||w)).join(', ')}</p>${wpn?`<p class="avtiny" style="color:var(--bad)">${esc(IT[r.eq.w].n)} can't be used as a ${esc(c.n)}: it goes to the convoy and a basic weapon is equipped.</p>`:''}
+    ${p.item?`<p class="avtiny">Uses up: <b>${esc(IT[p.item].n)}</b>${ok?'':' <span style="color:var(--bad)">(you don’t have one)</span>'}</p>`:''}<p class="avtiny">Promotion can’t be undone.</p></div>
+  </div>
+  <div class="row"><button class="b" id="pdBack">Back</button><button class="b gold" id="pdGo" ${ok?'':'disabled'}>Promote to ${esc(c.n)}</button></div>`,true);
+ portrait($('#pdPor'),Object.assign(recUnit(r),{cls:p.to}));
+ $('#pdBack').onclick=()=>{sfx('tick');back();};
+ $('#pdGo').onclick=()=>{if(p.item&&!BAG.take(p.item))return;promote(r,p.to);sfx('lvl');toast(`${nm} is now a ${c.n}!`);saveCamp();back();};}
+const FAMN={inf:'Infantry',spear:'Spear',cav:'Cavalry',flyer:'Flyer',archer:'Archer',mage:'Mage',healer:'Healer',stealth:'Stealth',heavy:'Heavy',beast:'Beast',undead:'Undead',civ:'Civilian'};
+const WTN={sword:'Swords',lance:'Lances',bow:'Bows',xbow:'Crossbows',tome:'Tomes',staff:'Staves',dagger:'Daggers',club:'Clubs',fist:'Fists'};
 function openYard(){const render=()=>{const ready=CAMP.roster.filter(r=>!r.guest&&canPromote(r).length);
- show(`<div class="eyebrow">${esc(TOWNS[SCENE.key].name)}</div><h2>${esc((TOWNS[SCENE.key].spots.find(q=>q.id==='yard')||{label:'Training Yard'}).label)}</h2><p>Units at level 10 choose a new path. At level 20 they promote again with a special item.</p>
-  ${ready.length?ready.map(r=>`<h3>${esc(r.hero?HERO[r.hero].n:r.name)} · ${esc(CLS[r.cls].n)} Lv ${r.lv}</h3><div class="list">${canPromote(r).map(p=>{const c=CLS[p.to];const ok=!p.item||BAG.has(p.item);return `<button class="li" data-rec="${r.uid}" data-to="${p.to}" ${ok?'':'disabled'}><canvas width="96" height="96" data-cls="${p.to}" data-look="${r.uid}"></canvas><span class="nm">${esc(c.n)}</span><span class="ds">Grows: ${STATS.map((k,i)=>[STATN[k],c.g[i]]).sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>x[0]).join(', ')} · ${c.sk.filter(k=>SK[k]).map(k=>esc(SK[k].n)).join(', ')}${p.item?` · needs ${esc(IT[p.item].n)}`:''}</span><span class="rt">▲</span></button>`;}).join('')}</div>`).join(''):'<p class="muted">No one is ready to promote yet. Units can promote at level 10.</p>'}
+ show(`<div class="eyebrow">${esc(TOWNS[SCENE.key].name)}</div><h2>${esc((TOWNS[SCENE.key].spots.find(q=>q.id==='yard')||{label:'Training Yard'}).label)}</h2><p>Units at level 10 choose a new path. At level 20 they promote again with a special item. Tap a path to see it in full before you choose.</p>
+  ${ready.length?ready.map(r=>`<h3>${esc(r.hero?HERO[r.hero].n:r.name)} · ${esc(CLS[r.cls].n)} Lv ${r.lv}</h3><div class="list">${canPromote(r).map(p=>{const c=CLS[p.to];const ok=!p.item||BAG.has(p.item);return `<button class="li" data-rec="${r.uid}" data-to="${p.to}"><canvas width="96" height="96" data-cls="${p.to}" data-look="${r.uid}"></canvas><span class="nm">${esc(c.n)}</span><span class="ds">Grows: ${STATS.map((k,i)=>[STATN[k],c.g[i]]).sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>x[0]).join(', ')} · ${c.sk.filter(k=>SK[k]).map(k=>esc(SK[k].n)).join(', ')}${p.item?` · needs ${esc(IT[p.item].n)}${ok?'':' (missing)'}`:''}</span><span class="rt">Details ›</span></button>`;}).join('')}</div>`).join(''):'<p class="muted">No one is ready to promote yet. Units can promote at level 10.</p>'}
   <div class="row"><button class="b gold" id="ydDone">Done</button></div>`,true);
  for(const c of scr.querySelectorAll('canvas[data-cls]')){const r=recBy(+c.dataset.look);portrait(c,Object.assign(recUnit(r),{cls:c.dataset.cls}));}
- for(const b of scr.querySelectorAll('.li[data-to]'))b.onclick=()=>{const r=recBy(+b.dataset.rec),to=b.dataset.to,p=canPromote(r).find(x=>x.to===to);if(p.item&&!BAG.take(p.item))return;promote(r,to);sfx('lvl');toast(`${r.hero?HERO[r.hero].n:r.name} is now a ${CLS[to].n}!`);render();};
+ for(const b of scr.querySelectorAll('.li[data-to]'))b.onclick=()=>{const r=recBy(+b.dataset.rec),p=canPromote(r).find(x=>x.to===b.dataset.to);if(!p)return;sfx('tick');promoDetail(r,p,render);};
  $('#ydDone').onclick=closePanel;};render();}
 /* ---------- tavern ---------- */
+// owner 2026-11-24: a tap no longer hires. It opens the sellsword's sheet (stats, growth, skills, gear) with a Hire button.
+// Sellswords can be dismissed (here or in the Barracks): they go back to the tavern with their level and can be rehired at full price.
+const hireCost=(cls,lv)=>200+lv*60+(cls==='rider'?100:0);
+function sellswordSheet(r,cost,btns,back){const c=CLS[r.cls],g=growth(r),sk=[...new Set([...(c.sk||[]),...r.sk])].filter(k=>SK[k]),rg=c.rng||[1,1];
+ show(`<div class="eyebrow">Sellsword</div><div class="avtop" style="gap:12px"><canvas class="avface" width="160" height="160" id="ssPor"></canvas>
+   <div class="avid"><div class="un">${esc(r.name)} <span class="lv">Lv ${r.lv}</span></div><div class="us">${esc(c.n)} · Move ${c.mv} · Range ${rg[0]===rg[1]?rg[0]:rg[0]+'–'+rg[1]}${r.wounded?' · <span class="avw">Wounded</span>':''}</div>${cost!=null?`<div class="us">Fee <b style="color:var(--gold-2)">${cost}g</b> · you have ${CAMP.gold}g</div>`:''}</div></div>
+  <div class="avbody">
+   <div class="avc"><h3>Stats</h3><div class="gains">${statCells(r)}</div><p class="avtiny">Growth: ${STATS.map((k,i)=>`${STATN[k]} ${g[i]}%`).join(' · ')}</p></div>
+   <div class="avc"><h3>Skills</h3><div class="avskills">${sk.map(k=>`<div><b class="${SK[k].kind==='active'?'act':''}">${esc(SK[k].n)}</b> ${esc(SK[k].d)}</div>`).join('')||'<span class="muted">None</span>'}</div>
+    <h3>Gear</h3><p>${['w','a','x'].map(s=>r.eq[s]?esc(IT[r.eq[s]].n):'').filter(Boolean).join(', ')||'<span class="muted">None</span>'}</p><p class="avtiny">Weapons: ${c.wt.map(w=>esc(WTN[w]||w)).join(', ')}</p></div>
+  </div><div class="row"><button class="b" id="ssBack">Back</button>${btns}</div>`,true);
+ portrait($('#ssPor'),recUnit(r));$('#ssBack').onclick=()=>{sfx('tick');back();};}
+function dismissSellsword(r,done,back){const cost=hireCost(r.cls,r.lv);
+ show(`<div class="eyebrow">Dismiss</div><h2>Dismiss ${esc(r.name)}?</h2><p>${esc(r.name)} (${esc(CLS[r.cls].n)}, Lv ${r.lv}) leaves the company and goes back to the tavern. Their gear goes to the convoy.</p><p class="muted">You can hire them again at any tavern for the full fee, ${cost}g at their current level.</p>
+  <div class="row"><button class="b" id="dsNo">Keep</button><button class="b gold" id="dsYes">Dismiss</button></div>`,true);
+ $('#dsNo').onclick=()=>{sfx('tick');back();};
+ $('#dsYes').onclick=()=>{for(const s of ['w','a','x'])if(r.eq[s]){BAG.add(r.eq[s]);r.eq[s]=null;}CAMP.roster=CAMP.roster.filter(x=>x!==r);(CAMP.pool=CAMP.pool||[]).push(r);sfx('tick');toast(`${r.name} heads back to the tavern.`);saveCamp();done();};}
 function openTavern(){const avg=Math.max(1,Math.round(CAMP.roster.reduce((s,r)=>s+r.lv,0)/CAMP.roster.length)-1);const lv=clamp(avg,1,8);
- const offers=['swordsman','spearman','archer','rider','apprentice','acolyte','scout'].map((cls,i)=>({cls,lv,cost:200+lv*60+(cls==='rider'?100:0),name:GENERIC_NAMES[(CAMP.mi*3+i*5)%GENERIC_NAMES.length]}));
+ const offers=['swordsman','spearman','archer','rider','apprentice','acolyte','scout'].map((cls,i)=>({cls,lv,cost:hireCost(cls,lv),name:GENERIC_NAMES[(CAMP.mi*3+i*5)%GENERIC_NAMES.length]}));
  const rumor=RUMORS[(CAMP.mi*5+Object.keys(CAMP.done).length)%RUMORS.length];
- const render=()=>{show(`<div class="eyebrow">${esc(TOWNS[SCENE.key].name)}</div><h2>The Drowsy Gryphon</h2><p class="obj">“${esc(rumor)}”</p><h3>Sellswords for hire</h3>
-  <div class="list">${offers.map((o,i)=>`<button class="li" data-i="${i}" ${CAMP.gold<o.cost||o.hired?'disabled':''}><canvas width="96" height="96" data-cls="${o.cls}"></canvas><span class="nm">${esc(o.name)} <span class="lv">Lv ${o.lv}</span></span><span class="ds">${esc(CLS[o.cls].n)}${o.hired?' · hired':''}</span><span class="rt">${o.cost}g</span></button>`).join('')}</div>
+ const recOf=o=>o.rec||(o.rec=genericRec(o.cls,o.lv,o.name));
+ const mine=()=>CAMP.roster.filter(r=>!r.hero&&!r.guest);
+ const row=(attr,r,right,dis)=>`<button class="li" ${attr} ${dis?'disabled':''}><canvas width="96" height="96" data-cls="${r.cls}"></canvas><span class="nm">${esc(r.name)} <span class="lv">Lv ${r.lv}</span></span><span class="ds">${esc(CLS[r.cls].n)}${r.wounded?' · wounded':''}</span><span class="rt">${right}</span></button>`;
+ const render=()=>{const pool=CAMP.pool||[];
+  show(`<div class="eyebrow">${esc(TOWNS[SCENE.key].name)}</div><h2>The Drowsy Gryphon</h2><p class="obj">“${esc(rumor)}”</p><h3>Sellswords for hire</h3><p class="muted" style="font-size:12.5px;margin:2px 0 6px">Tap a sellsword to see their sheet before hiring.</p>
+  <div class="list">${offers.map((o,i)=>o.hired?'':row(`data-i="${i}"`,{name:o.name,lv:o.lv,cls:o.cls},o.cost+'g',CAMP.gold<o.cost)).join('')}${pool.map((r,i)=>row(`data-p="${i}"`,r,hireCost(r.cls,r.lv)+'g',CAMP.gold<hireCost(r.cls,r.lv))).join('')}</div>
+  ${mine().length?`<h3>Your sellswords</h3><div class="list">${mine().map(r=>row(`data-d="${r.uid}"`,r,'Dismiss')).join('')}</div>`:''}
   <div class="row"><button class="b gold" id="tvDone">Done</button></div>`,true);
   for(const c of scr.querySelectorAll('canvas[data-cls]'))portrait(c,{id:hash(c.dataset.cls)%50,cls:c.dataset.cls,side:'B',look:{},x:0,y:0,face:1,hp:1,s:{hp:1}});
-  for(const b of scr.querySelectorAll('.li[data-i]'))b.onclick=()=>{const o=offers[+b.dataset.i];if(CAMP.gold<o.cost)return;CAMP.gold-=o.cost;CAMP.roster.push(genericRec(o.cls,o.lv,o.name));o.hired=1;sfx('coin');toast(`${o.name} joins the company.`);render();};
+  const hire=(r,cost,after)=>sellswordSheet(r,cost,`<button class="b gold" id="ssHire" ${CAMP.gold<cost?'disabled':''}>Hire for ${cost}g</button>`,render)||(()=>{const b=$('#ssHire');if(b)b.onclick=()=>{if(CAMP.gold<cost)return;CAMP.gold-=cost;CAMP.roster.push(r);after();sfx('coin');toast(`${r.name} joins the company.`);saveCamp();render();};})();
+  for(const b of scr.querySelectorAll('.li[data-i]'))b.onclick=()=>{const o=offers[+b.dataset.i];sfx('tick');hire(recOf(o),o.cost,()=>{o.hired=1;});};
+  for(const b of scr.querySelectorAll('.li[data-p]'))b.onclick=()=>{const r=(CAMP.pool||[])[+b.dataset.p];sfx('tick');hire(r,hireCost(r.cls,r.lv),()=>{CAMP.pool=CAMP.pool.filter(x=>x!==r);});};
+  for(const b of scr.querySelectorAll('.li[data-d]'))b.onclick=()=>{const r=recBy(+b.dataset.d);sfx('tick');sellswordSheet(r,null,`<button class="b gold" id="ssDis">Dismiss…</button>`,render);$('#ssDis').onclick=()=>dismissSellsword(r,render,render);};
   $('#tvDone').onclick=closePanel;};render();}
 /* ---------- talk: camp conversations ---------- */
 function talkParty(){return new Set(CAMP.roster.filter(r=>r.hero&&!r.guest).map(r=>r.hero));}
@@ -3719,13 +3804,13 @@ $('#winfo').addEventListener('click',e=>{const b=e.target.closest('[data-ws]');i
 function worldLayout(){const w=wcv.clientWidth,h=wcv.clientHeight,d=Math.min(window.devicePixelRatio||1,2);if(wcv.width!==Math.round(w*d)||wcv.height!==Math.round(h*d)){wcv.width=Math.round(w*d);wcv.height=Math.round(h*d);}
  const W1=curWorld(),wide=w>=880||w>h,wi=$('#winfo'),pl=wide&&wi&&wi.offsetWidth?wi.offsetLeft-wcv.offsetLeft-12-16:0,aw=wide?(pl>200?pl:w-(w>=880&&h>560?430:330)):w-24,top=h>560?66:50,ah=wide?h-top-16:h-top-262;const short=wide&&h<=560;let s=short?Math.min(1,aw/W1.w,(ah*1.9)/W1.h):Math.max(.3,Math.min(aw/W1.w,ah/W1.h));const ox=(aw-W1.w*s)/2+(wide?16:12);let oy=top;
  if(short&&W1.h*s>ah){const n=(SCENE.sel&&curWorld().nodes[SCENE.sel])||curWorld().nodes.m1||{y:W1.h/2};if(SCENE.wpan==null)SCENE.wpan=0;const base=top+ah/2-n.y*s;const lo=h-6-W1.h*s,hi=top;SCENE.wpan=clamp(base+SCENE.wpan,lo,hi)-base;oy=base+SCENE.wpan;SCENE.wclip=[top,h];}else SCENE.wclip=null;
- const k=Math.min(3,s*d);if(!SCENE.wbase||Math.abs(SCENE.wk-k)>.01||SCENE.wid!==curWorld()){SCENE.wbase=bakeWorld1(k);SCENE.wk=k;SCENE.wid=curWorld();}return {w,h,d,s,ox,oy};}
+ const k=Math.min(3,s*d);const fk=worldFogKey();if(!SCENE.wbase||Math.abs(SCENE.wk-k)>.01||SCENE.wid!==curWorld()||SCENE.wfk!==fk){SCENE.wbase=bakeWorld1(k);SCENE.wfog=bakeWorldFog(k,curWorld());SCENE.wk=k;SCENE.wid=curWorld();SCENE.wfk=fk;}return {w,h,d,s,ox,oy};}
 function nodeOf(id){return curWorld().nodes[id];}
 function drawWorld(now){
- const L=worldLayout(),W1=curWorld();wg.setTransform(L.d,0,0,L.d,0,0);wg.fillStyle='#0b120f';wg.fillRect(0,0,L.w,L.h);wg.save();if(SCENE.wclip){wg.beginPath();wg.rect(0,SCENE.wclip[0]-4,L.w,L.h);wg.clip();}wg.drawImage(SCENE.wbase,L.ox,L.oy,W1.w*L.s,W1.h*L.s);
+ const L=worldLayout(),W1=curWorld();wg.setTransform(L.d,0,0,L.d,0,0);wg.fillStyle='#0b120f';wg.fillRect(0,0,L.w,L.h);wg.save();if(SCENE.wclip){wg.beginPath();wg.rect(0,SCENE.wclip[0]-4,L.w,L.h);wg.clip();}wg.drawImage(SCENE.wbase,L.ox,L.oy,W1.w*L.s,W1.h*L.s);if(SCENE.wfog)wg.drawImage(SCENE.wfog,L.ox,L.oy,W1.w*L.s,W1.h*L.s);   // R-093
  wg.setTransform(L.d*L.s,0,0,L.d*L.s,L.d*L.ox,L.d*L.oy);
  const opts=openMissions().map(m=>m.id);
- for(const m of MISSIONS){const n=nodeOf(m.id);if(!n)continue;const st=CAMP.done[m.id]?'won':opts.includes(m.id)?'open':'locked';if(m.optional&&st==='locked'&&!(m.requires&&CAMP.flags[m.requires]))continue;
+ for(const m of MISSIONS){const n=nodeOf(m.id);if(!n)continue;const st=CAMP.done[m.id]?'won':opts.includes(m.id)?'open':'locked';if(!worldSeen(m.id))continue;   // R-093 under the fog
   const pulse=.5+.5*Math.sin(now/300);wg.fillStyle='rgba(0,0,0,.3)';ell(wg,n.x,n.y+2,13,5);wg.fill();
   if(st==='open'&&!RM){wg.strokeStyle=`rgba(255,214,110,${.9-pulse*.6})`;wg.lineWidth=2.5;ell(wg,n.x,n.y+2,12+pulse*12,5+pulse*4);wg.stroke();}
   if(SCENE.sel===m.id){wg.strokeStyle='#fff3c4';wg.lineWidth=2.2;ell(wg,n.x,n.y+2,17,7);wg.stroke();}
@@ -3735,7 +3820,7 @@ function drawWorld(now){
  const cur=SCENE.sel&&nodeOf(SCENE.sel)||nodeOf(MISSIONS.filter(m=>CAMP.done[m.id]).map(m=>m.id).pop()||'m1')||{x:curWorld().w/2,y:curWorld().h-80};
  const r=heroBy('rowan');wg.save();wg.translate(cur.x-22,cur.y+6);drawUnit(wg,{id:1,cls:r?r.cls:'militia',side:'B',hero:'rowan',look:r?r.look:HERO.rowan.look,oath:r&&r.oath,x:0,y:0,face:1,hp:1},now,{});wg.restore();
  wg.setTransform(L.d,0,0,L.d,0,0);wg.font='700 12px "Alegreya Sans",sans-serif';wg.textAlign='center';wg.textBaseline='middle';
- for(const m of MISSIONS){const n=nodeOf(m.id);if(!n)continue;if(m.optional&&!(m.requires&&CAMP.flags[m.requires])&&!CAMP.done[m.id])continue;const x=L.ox+n.x*L.s,y=L.oy+(n.y+14)*L.s+4;const txt=(m.num?m.num+' · ':'')+(n.lab||m.name);const wd=wg.measureText(txt).width+12;
+ for(const m of MISSIONS){const n=nodeOf(m.id);if(!n)continue;if(!worldSeen(m.id))continue;const x=L.ox+n.x*L.s,y=L.oy+(n.y+14)*L.s+4;const txt=(m.num?m.num+' · ':'')+(n.lab||m.name);const wd=wg.measureText(txt).width+12;
   wg.fillStyle=SCENE.sel===m.id?'rgba(90,70,24,.92)':'rgba(16,14,10,.78)';wg.beginPath();wg.roundRect(x-wd/2,y-9,wd,18,6);wg.fill();wg.fillStyle=CAMP.done[m.id]||opts.includes(m.id)?'#f3e7c3':'#a7a69c';wg.fillText(txt,x,y+.5);}
  wg.textBaseline='alphabetic';wg.restore();
 }
@@ -3766,7 +3851,23 @@ function gearCmp(r,k,slot){slot=slot||SLOT_OF[IT[k].type];const a=gearStats(r,r.
   const d=y-x;out.push(`<span class="gc ${d>0?'up':'dn'}">${GS_N[key]} ${x}→${y} (${d>0?'+':'−'}${Math.abs(d)})</span>`);}
  return out.length?out.join(''):'<span class="gc">No change</span>';}
 function gearLine(r){return ['w','a','x'].map(s=>`<span class="gq"><b>${{w:'Weapon',a:'Armor',x:'Acc.'}[s]}</b> ${r.eq[s]?esc(IT[r.eq[s]].n):'<span class="muted">—</span>'}</span>`).join('');}
-function partyGear(){return `<div class="list">${CAMP.roster.filter(x=>!x.guest).map(r=>`<div class="li" style="cursor:default"><canvas width="96" height="96" data-rec="${r.uid}"></canvas><span class="nm">${esc(recName(r))} <span class="lv">Lv ${r.lv} · ${esc(CLS[r.cls].n)}</span></span><span class="ds">${gearLine(r)}</span><span class="rt"></span></div>`).join('')}</div>`;}
+// Smithy "Gear" tab (owner 2026-11-24: show what's in the convoy and let me equip / take off gear right here).
+// Convoy items: tap one to put it on someone (with the stat comparison). Party: tap a slot to swap or take it off.
+const SLOTN={w:'Weapon',a:'Armor',x:'Acc.'};
+function equipSlot(r,k,after){const type={w:'weapon',a:'armor',x:'acc'}[k],cur=r.eq[k],c=CLS[r.cls],nm=recName(r);
+ const opts=Object.keys(BAG.items).filter(i=>IT[i].type===type&&(type!=='weapon'||c.wt.includes(IT[i].wt)));sfx('tick');
+ pickItem({w:'Weapon',a:'Armor',x:'Accessory'}[k]+' for '+nm,cur,[...(cur?[{v:'__off',n:'Take off',d:'Put '+IT[cur].n+' back in the convoy',h:gearCmp(r,null,k)}]:[]),...opts.map(i=>({v:i,n:IT[i].n,d:itemDesc(i),q:BAG.items[i],h:gearCmp(r,i,k)}))],
+  v=>{if(!v)return after();if(r.eq[k])BAG.add(r.eq[k]);if(v==='__off')r.eq[k]=null;else{BAG.take(v);r.eq[k]=v;}sfx('select');saveCamp();after();});}
+function equipItemOn(k,after){const it=IT[k],slot=SLOT_OF[it.type];if(!slot)return after();const who=CAMP.roster.filter(r=>!r.guest&&canWear(r,k));sfx('tick');
+ pickItem('Equip '+it.n+' on…',null,who.map(r=>({v:String(r.uid),n:recName(r)+' · '+CLS[r.cls].n,d:'Now: '+(r.eq[slot]?IT[r.eq[slot]].n:'nothing'),h:gearCmp(r,k,slot)})),
+  v=>{if(!v)return after();const r=recBy(+v);if(!BAG.take(k))return after();if(r.eq[slot])BAG.add(r.eq[slot]);r.eq[slot]=k;sfx('select');toast(`${recName(r)} equips the ${it.n}.`);saveCamp();after();});}
+function partyGear(){const inv=Object.keys(BAG.items).filter(k=>SLOT_OF[IT[k].type]).sort((a,b)=>IT[a].type.localeCompare(IT[b].type)||IT[a].n.localeCompare(IT[b].n));
+ const team=CAMP.roster.filter(x=>!x.guest);
+ return `<h3>Convoy</h3><p class="muted" style="font-size:12.5px;margin:2px 0 6px">Tap an item to equip it on someone.</p><div class="list">${inv.length?inv.map(k=>{const it=IT[k],fit=team.filter(r=>canWear(r,k));
+   return `<button class="li" data-inv="${k}" ${fit.length?'':'disabled'}><canvas width="96" height="96" data-item="${k}"></canvas><span class="nm">${esc(it.n)} <span class="lv">×${BAG.items[k]}</span></span><span class="ds">${esc(itemDesc(k))} · ${fit.length?'fits '+esc(fit.map(recName).join(', ')):'<b style="color:var(--bad)">nobody can use</b>'}</span><span class="rt">${SLOTN[SLOT_OF[it.type]]}</span></button>`;}).join(''):'<p class="muted">No spare gear in the convoy.</p>'}</div>
+  <h3>Party</h3><p class="muted" style="font-size:12.5px;margin:2px 0 6px">Tap a slot to swap it or take it off.</p><div class="list">${team.map(r=>`<div class="li" style="cursor:default"><canvas width="96" height="96" data-rec="${r.uid}"></canvas><span class="nm">${esc(recName(r))} <span class="lv">Lv ${r.lv} · ${esc(CLS[r.cls].n)}</span></span><span class="ds gslots">${['w','a','x'].map(s=>`<button class="b gslot" data-gr="${r.uid}" data-gs="${s}"><b>${SLOTN[s]}</b> ${r.eq[s]?esc(IT[r.eq[s]].n):'<span class="muted">—</span>'}</button>`).join('')}</span><span class="rt"></span></div>`).join('')}</div>`;}
+function wirePartyGear(render){for(const b of scr.querySelectorAll('[data-inv]'))b.onclick=()=>equipItemOn(b.dataset.inv,render);
+ for(const b of scr.querySelectorAll('[data-gs]'))b.onclick=()=>equipSlot(recBy(+b.dataset.gr),b.dataset.gs,render);}
 
 function openShop(key,filter){
  let tab='buy',pick=null;const stock=shopStock(key,!!filter);if(!CAMP.seen)CAMP.seen={};const fresh=new Set(stock.filter(k=>shopIsNew(key,k)));for(const k of fresh)CAMP.seen['shop_'+key+'_'+k]=1;if(fresh.size)saveCamp();
@@ -3776,13 +3877,14 @@ function openShop(key,filter){
  const render=()=>{if(pick)return detail();
   const keep=k=>!(IT[k].price>0);   // keepsake: starting gear with no shop price (2026-11-16, owner: shown, never sold)
   const list=tab==='buy'?stock:Object.keys(BAG.items).sort((a,b)=>keep(a)-keep(b));
-  const tabs=`<div class="row"><button class="b ${tab==='buy'?'gold':''}" data-t="buy">Buy</button><button class="b ${tab==='sell'?'gold':''}" data-t="sell">Sell</button><button class="b ${tab==='party'?'gold':''}" data-t="party">Party gear</button>${goldChip()}</div>`;
+  const tabs=`<div class="row"><button class="b ${tab==='buy'?'gold':''}" data-t="buy">Buy</button><button class="b ${tab==='sell'?'gold':''}" data-t="sell">Sell</button><button class="b ${tab==='party'?'gold':''}" data-t="party">Gear</button>${goldChip()}</div>`;
   const body=tab==='party'?partyGear():`<p class="muted" style="font-size:12.5px">Tap an item to compare it on your party, then confirm.</p><div class="list">${list.length?list.map(k=>{const it=IT[k],price=tab==='buy'?it.price:sellPrice(k),ks=tab==='sell'&&keep(k);const own=BAG.items[k]||0;const eq=CAMP.roster.filter(r=>r.eq.w===k||r.eq.a===k||r.eq.x===k).length;
    const users=SLOT_OF[it.type]?CAMP.roster.filter(r=>!r.guest&&canWear(r,k)).length:-1;
    return `<button class="li" data-k="${k}"><canvas width="96" height="96" data-item="${k}"></canvas><span class="nm">${esc(it.n)}${tab==='buy'&&fresh.has(k)?' <b style="color:var(--gold,#e8b84a);font-size:11px">NEW</b>':''}</span><span class="ds">${esc(itemDesc(k))}${own?` · have ${own}`:''}${eq?` · ${eq} equipped`:''}${users===0?' · <b style="color:var(--bad)">nobody can use</b>':''}</span><span class="rt" ${tab==='buy'&&CAMP.gold<price?'style="opacity:.45"':''}>${ks?'<span class="muted" style="font-size:12px">Keepsake</span>':price+'g'}</span></button>`;}).join(''):'<p class="muted">Nothing to sell.</p>'}</div>`;
   show(`${head()}${tabs}${body}<div class="row"><button class="b gold" id="spDone">Done</button></div>`,true);itemIcons();miniPortraits();
   for(const b of scr.querySelectorAll('[data-t]'))b.onclick=()=>{tab=b.dataset.t;sfx('tick');render();};
   for(const b of scr.querySelectorAll('.li[data-k]'))b.onclick=()=>{pick=b.dataset.k;sfx('tick');render();};
+  if(tab==='party')wirePartyGear(render);
   $('#spDone').onclick=closePanel;};
  const detail=()=>{const k=pick,it=IT[k],slot=SLOT_OF[it.type],buying=tab==='buy',price=buying?it.price:sellPrice(k),afford=CAMP.gold>=price,own=BAG.items[k]||0;
   const rows=slot?CAMP.roster.filter(x=>!x.guest).map(r=>{const ok=canWear(r,k),cur=r.eq[slot],same=cur===k;
@@ -4754,6 +4856,28 @@ MISSIONS.push({
    {w:'narr',x:'Soldiers scale the east wall and run north to cut off the postern.'},
    {w:'kael',x:'They’re circling round! Move, Rowan!'}
   ],spawn:[['soldier',5,3,17,{pal:'R',ai:'aggr'}],['soldier',4,4,17,{pal:'R',ai:'aggr'}]]},
+  // owner 2026-11-24: holding the gate forever must not work. Turn 15 the Regent's second column arrives with ladders and
+  // crossbows; more follow every 3 turns, so the only way to win is to run for the postern (R-092)
+  {when:{turn:15},scene:[
+   {w:'narr',x:'Horns on the south road. A second column in Regent black, and they have brought ladders.'},
+   {w:'sable',x:'Ladders to the wall! Crossbows up! Shoot the old man off his gate.'},
+   {w:'edric',x:'Rowan! The wall won’t hold now. Go. Go while I still stand!'}
+  ],tiles:[[9,9,'^'],[9,14,'^']],
+   spawn:[['xbowman',7,9,9,{pal:'R',ai:'stay',name:'Ladder Crossbowman'}],['xbowman',7,9,14,{pal:'R',ai:'stay',name:'Ladder Crossbowman'}],
+    ['xbowman',7,12,11,{pal:'R',ai:'aggr'}],['blackrider',7,12,9,{pal:'R',ai:'aggr'}],['blackrider',7,12,13,{pal:'R',ai:'aggr'}],
+    ['pikeman',6,11,8,{pal:'R',ai:'aggr'}],['pikeman',6,11,14,{pal:'R',ai:'aggr'}]]},
+  {when:{turn:18},scene:[
+   {w:'narr',x:'More black riders crest the south road.'}
+  ],
+   spawn:[['xbowman',7,12,10,{pal:'R',ai:'aggr'}],['soldier',7,12,12,{pal:'R',ai:'aggr'}],['blackrider',7,12,11,{pal:'R',ai:'aggr'}]]},
+  {when:{turn:21},scene:[
+   {w:'narr',x:'The Regent’s men keep coming. There is no end to them tonight.'}
+  ],
+   spawn:[['xbowman',8,12,10,{pal:'R',ai:'aggr'}],['soldier',8,12,12,{pal:'R',ai:'aggr'}],['blackrider',8,12,11,{pal:'R',ai:'aggr'}]]},
+  {when:{turn:24},scene:[
+   {w:'narr',x:'Still they come.'}
+  ],
+   spawn:[['xbowman',8,12,10,{pal:'R',ai:'aggr'}],['blackrider',8,12,12,{pal:'R',ai:'aggr'}],['blackrider',8,12,11,{pal:'R',ai:'aggr'}]]},
   {when:{reach:{tag:'rowan',r:2,c:11}},scene:[
    {w:'rowan',x:'The postern’s open. The woods are just beyond.'},
    {w:'elowen',x:'Don’t stop. He bought us this road. Don’t waste it.'}
